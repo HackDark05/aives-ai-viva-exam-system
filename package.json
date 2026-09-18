@@ -1,0 +1,13 @@
+{
+  "name": "aives-ai-viva-exam-system",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run start:dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "db:up": "docker compose up -d",
+    "db:migrate": "npm run db:migrate --prefix backend",
+    "db:seed": "npm run db:seed --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
