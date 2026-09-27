@@ -7,11 +7,15 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GoogleIdTokenAccounts implements GoogleAccounts {
+
+    private static final Logger log = LoggerFactory.getLogger(GoogleIdTokenAccounts.class);
 
     private final AppProperties properties;
     private final NetHttpTransport transport = new NetHttpTransport();
@@ -44,6 +48,7 @@ public class GoogleIdTokenAccounts implements GoogleAccounts {
         } catch (ApiException exception) {
             throw exception;
         } catch (Exception exception) {
+            log.warn("Google sign-in verification failed: {}", exception.getMessage());
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Google sign-in failed");
         }
     }
