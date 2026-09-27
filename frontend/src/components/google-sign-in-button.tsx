@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-
-const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+import { api } from "@/lib/api";
 
 type GoogleCredential = {
   credential: string;
@@ -35,22 +34,41 @@ export function GoogleSignInButton({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const onCredentialRef = useRef(onCredential);
+  const [clientId, setClientId] = useState<string | null>(null);
   onCredentialRef.current = onCredential;
 
   useEffect(() => {
-    if (!CLIENT_ID || !host.current) {
+    let cancelled = false;
+    api<{ clientId: string }>("/api/auth/config")
+      .then((config) => {
+        if (!cancelled) {
+          setClientId(config.clientId.trim());
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setClientId("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!clientId || !host.current) {
       return;
     }
     const parent = host.current;
     let cancelled = false;
 
     function render() {
-      if (cancelled || !window.google || !CLIENT_ID) {
+      if (cancelled || !window.google || !clientId) {
         return;
       }
       parent.replaceChildren();
       window.google.accounts.id.initialize({
-        client_id: CLIENT_ID,
+        client_id: clientId,
         callback: (response) => onCredentialRef.current(response.credential),
       });
       window.google.accounts.id.renderButton(parent, {
@@ -59,7 +77,7 @@ export function GoogleSignInButton({
         size: "large",
         text: "continue_with",
         shape: "rectangular",
-        width: parent.offsetWidth || 360,
+        width: Math.max(parent.offsetWidth, 320),
         logo_alignment: "left",
       });
     }
@@ -79,19 +97,17 @@ export function GoogleSignInButton({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clientId]);
 
-  if (!CLIENT_ID) {
+  if (!clientId) {
     return (
       <Button
         type="button"
         variant="outline"
         className="h-11 w-full"
-        disabled={disabled}
+        disabled={disabled || clientId === null}
         onClick={() =>
-          toast.error(
-            "Add a Google client ID to enable Google sign-in.",
-          )
+          toast.error("Google sign-in is not configured on the API.")
         }
       >
         Continue with Google
@@ -102,7 +118,7 @@ export function GoogleSignInButton({
   return (
     <div
       ref={host}
-      className={`flex min-h-11 w-full justify-center [&_iframe]:!w-full ${disabled ? "pointer-events-none opacity-50" : ""}`}
+      className={`flex h-10 w-full justify-center overflow-hidden [&_iframe]:!h-10 [&_iframe]:!w-full ${disabled ? "pointer-events-none opacity-50" : ""}`}
     />
   );
 }
