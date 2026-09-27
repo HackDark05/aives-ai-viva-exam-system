@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { EyeIcon, EyeOffIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/brand-mark";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -32,24 +33,55 @@ const DEMO_ACCOUNTS = [
 
 export function LoginScreen() {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
+
+  function finish(result: LoginResponse) {
+    setSession(result.accessToken);
+    toast.success(`Welcome, ${result.user.name.split(" ")[0]}.`);
+    router.replace("/");
+    router.refresh();
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
 
     try {
-      const result = await api<LoginResponse>("/api/auth/login", {
+      const result = await api<LoginResponse>(
+        mode === "create" ? "/api/auth/register" : "/api/auth/login",
+        {
+          method: "POST",
+          body:
+            mode === "create"
+              ? { name, email, password }
+              : { email, password },
+        },
+      );
+      finish(result);
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Unable to reach the AIVES API. Is the backend running?";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onGoogleCredential(idToken: string) {
+    setSubmitting(true);
+    try {
+      const result = await api<LoginResponse>("/api/auth/google", {
         method: "POST",
-        body: { email, password },
+        body: { idToken },
       });
-      setSession(result.accessToken);
-      toast.success(`Welcome back, ${result.user.name.split(" ")[0]}.`);
-      router.replace("/");
-      router.refresh();
+      finish(result);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -131,16 +163,41 @@ export function LoginScreen() {
 
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-              Sign in
+              {mode === "create" ? "Create account" : "Sign in"}
             </p>
-            <h1 className="font-serif text-4xl tracking-tight">Enter the hall</h1>
+            <h1 className="font-serif text-4xl tracking-tight">
+              {mode === "create" ? "Join the hall" : "Enter the hall"}
+            </h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              Use your department account to open the viva workspace.
+              Use Google or an email and password to open the viva workspace.
             </p>
           </div>
 
-          <form className="mt-8 space-y-6" onSubmit={onSubmit}>
+          <div className="mt-8 space-y-4">
+            <GoogleSignInButton disabled={submitting} onCredential={onGoogleCredential} />
+            <div className="flex items-center gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              or
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </div>
+
+          <form className="mt-4 space-y-6" onSubmit={onSubmit}>
             <FieldGroup>
+              {mode === "create" ? (
+                <Field>
+                  <FieldLabel htmlFor="name">Name</FieldLabel>
+                  <Input
+                    id="name"
+                    autoComplete="name"
+                    required
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Alex Rivera"
+                    className="h-11 px-3"
+                  />
+                </Field>
+              ) : null}
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -160,7 +217,7 @@ export function LoginScreen() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
+                    autoComplete={mode === "create" ? "new-password" : "current-password"}
                     required
                     minLength={8}
                     value={password}
@@ -192,16 +249,30 @@ export function LoginScreen() {
               className="h-11 w-full"
               disabled={submitting}
             >
-              {submitting ? (
+                {submitting ? (
                 <>
                   <Loader2Icon className="animate-spin" />
-                  Checking credentials
+                  {mode === "create" ? "Creating account" : "Checking credentials"}
                 </>
+              ) : mode === "create" ? (
+                "Create account"
               ) : (
                 "Continue"
               )}
             </Button>
           </form>
+
+          <p className="mt-4 text-sm text-muted-foreground">
+            {mode === "create" ? "Already have an account?" : "New here?"}{" "}
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto px-0 text-sm"
+              onClick={() => setMode((current) => (current === "create" ? "sign-in" : "create"))}
+            >
+              {mode === "create" ? "Sign in" : "Create an account"}
+            </Button>
+          </p>
 
           <div className="mt-8 space-y-3 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
