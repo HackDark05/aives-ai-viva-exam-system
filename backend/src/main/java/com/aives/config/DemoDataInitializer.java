@@ -65,7 +65,7 @@ public class DemoDataInitializer implements ApplicationRunner {
             if (users.findByEmail(demo.email()).isPresent()) {
                 continue;
             }
-            users.insert(new UserAccount(UUID.randomUUID().toString(), demo.email(), demo.name(), passwordHash, demo.role()));
+            users.insert(new UserAccount(UUID.randomUUID().toString(), demo.email(), demo.name(), passwordHash, demo.role(), null));
             log.info("Seeded {} {}", demo.role().name().toLowerCase(), demo.email());
         }
 

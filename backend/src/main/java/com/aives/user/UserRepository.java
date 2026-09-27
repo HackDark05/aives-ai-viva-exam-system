@@ -16,4 +16,6 @@ public interface UserRepository {
     UserAccount updateRole(String id, Role role);
 
     void insert(UserAccount user);
+
+    void linkGoogleSubject(String id, String googleSub);
 }

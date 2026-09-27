@@ -41,7 +41,10 @@ public class SchemaInitializer implements ApplicationRunner {
                 )
                 """
         );
+        jdbc.execute("ALTER TABLE \"User\" ALTER COLUMN password DROP NOT NULL");
+        jdbc.execute("ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS google_sub TEXT");
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS \"User_email_key\" ON \"User\" (email)");
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS \"User_google_sub_key\" ON \"User\" (google_sub)");
         jdbc.execute(
                 """
                 CREATE TABLE IF NOT EXISTS knowledge_chunk (
