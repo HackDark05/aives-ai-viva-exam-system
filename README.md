@@ -6,18 +6,24 @@ Login and home pages for an oral-exam workspace.
 | --- | --- |
 | Frontend | Next.js + TypeScript |
 | UI | Tailwind CSS + shadcn/ui |
-| Backend | NestJS + TypeScript |
-| Database | PostgreSQL |
+| Backend | Java 21 + Spring Boot |
+| Database | PostgreSQL + pgvector |
 
 ## Run locally
 
-You need **Node.js 22+**, **npm**, and **Docker** (for Postgres).
+You need **JDK 21+**, **Maven**, **Node.js 22+**, **npm**, and **Docker** (for Postgres with pgvector).
 
 ```bash
 docker compose up -d
 cd backend
-npx prisma migrate dev --name init
-npm run start:dev
+mvn spring-boot:run
+```
+
+The API creates its tables on startup, including `knowledge_chunk.embedding` (`vector(384)`). Text is embedded locally with all-MiniLM-L6-v2 and stored in pgvector. If Postgres was created from the previous image, recreate it once:
+
+```bash
+docker compose down -v
+docker compose up -d
 ```
 
 In another terminal:
@@ -27,7 +33,7 @@ cd frontend
 npm run dev
 ```
 
-From the repo root you can also run both apps together after the database is migrated:
+From the repo root you can also run both apps together after Postgres is up:
 
 ```bash
 npm install
@@ -51,10 +57,18 @@ Password for every demo account: `demo1234`
 
 Sign in as the administrator to assign roles. Login returns a JWT that includes `sub`, `email`, and `role`.
 
+## Knowledge embeddings
+
+Passages are embedded with all-MiniLM-L6-v2 and stored as `vector(384)` in Postgres.
+
+- `POST /api/knowledge` with `{ "title", "content" }` — examiner or administrator
+- `GET /api/knowledge` — list stored passages
+- `GET /api/knowledge?q=strong oral answer` — nearest passages by cosine similarity
+
 ## Layout
 
 ```
 frontend/   Next.js app (login + home)
-backend/    NestJS API (auth + users)
-docker-compose.yml   PostgreSQL 16
+backend/    Spring Boot API (auth, users, embeddings)
+docker-compose.yml   PostgreSQL 16 + pgvector
 ```

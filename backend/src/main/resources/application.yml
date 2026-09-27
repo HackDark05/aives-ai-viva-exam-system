@@ -1,0 +1,16 @@
+server:
+  port: ${PORT:4000}
+
+spring:
+  application:
+    name: aives-api
+  datasource:
+    url: jdbc:postgresql://localhost:5433/aives
+    username: aives
+    password: aives
+
+app:
+  jwt-secret: ${JWT_SECRET:change-me}
+  jwt-ttl: 7d
+  frontend-url: ${FRONTEND_URL:http://localhost:3001}
+  demo-password: ${DEMO_PASSWORD:demo1234}
