@@ -38,7 +38,7 @@ class UsersServiceTest {
     }
 
     private static UserAccount account(String id, Role role) {
-        return new UserAccount(id, id + "@aives.test", id, "hash", role);
+        return new UserAccount(id, id + "@aives.test", id, "hash", role, null);
     }
 
     private static final class InMemoryUsers implements UserRepository {
@@ -68,7 +68,8 @@ class UsersServiceTest {
         public UserAccount updateRole(String id, Role role) {
             UserAccount current = findById(id).orElseThrow();
             rows.removeIf(user -> user.id().equals(id));
-            UserAccount updated = new UserAccount(current.id(), current.email(), current.name(), current.passwordHash(), role);
+            UserAccount updated = new UserAccount(
+                    current.id(), current.email(), current.name(), current.passwordHash(), role, current.googleSub());
             rows.add(updated);
             return updated;
         }
@@ -76,6 +77,20 @@ class UsersServiceTest {
         @Override
         public void insert(UserAccount user) {
             rows.add(user);
+        }
+
+        @Override
+        public void linkGoogleSubject(String id, String googleSub) {
+            UserAccount current = findById(id).orElseThrow();
+            rows.removeIf(user -> user.id().equals(id));
+            rows.add(new UserAccount(
+                    current.id(),
+                    current.email(),
+                    current.name(),
+                    current.passwordHash(),
+                    current.role(),
+                    current.googleSub() == null ? googleSub : current.googleSub()
+            ));
         }
     }
 }

@@ -27,6 +27,16 @@ public class AuthController {
         return auth.login(request.email(), request.password());
     }
 
+    @PostMapping("/register")
+    public LoginResponse register(@Valid @RequestBody RegisterRequest request) {
+        return auth.register(request.name(), request.email(), request.password());
+    }
+
+    @PostMapping("/google")
+    public LoginResponse google(@Valid @RequestBody GoogleLoginRequest request) {
+        return auth.google(request.idToken());
+    }
+
     @GetMapping("/me")
     public MeResponse me(@AuthenticationPrincipal PublicUser user) {
         return auth.me(user);

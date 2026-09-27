@@ -23,7 +23,7 @@ public class JdbcUserRepository implements UserRepository {
     public Optional<UserAccount> findByEmail(String email) {
         return jdbc.query(
                 """
-                SELECT id, email, name, password, role::text AS role
+                SELECT id, email, name, password, role::text AS role, google_sub
                 FROM "User"
                 WHERE email = ?
                 """,
@@ -36,7 +36,7 @@ public class JdbcUserRepository implements UserRepository {
     public Optional<UserAccount> findById(String id) {
         return jdbc.query(
                 """
-                SELECT id, email, name, password, role::text AS role
+                SELECT id, email, name, password, role::text AS role, google_sub
                 FROM "User"
                 WHERE id = ?
                 """,
@@ -49,7 +49,7 @@ public class JdbcUserRepository implements UserRepository {
     public List<UserAccount> findAllOrdered() {
         return jdbc.query(
                 """
-                SELECT id, email, name, password, role::text AS role
+                SELECT id, email, name, password, role::text AS role, google_sub
                 FROM "User"
                 ORDER BY CASE role::text
                     WHEN 'STUDENT' THEN 0
@@ -89,17 +89,31 @@ public class JdbcUserRepository implements UserRepository {
     }
 
     @Override
+    public void linkGoogleSubject(String id, String googleSub) {
+        jdbc.update(
+                """
+                UPDATE "User"
+                SET google_sub = ?, "updatedAt" = CURRENT_TIMESTAMP
+                WHERE id = ? AND google_sub IS NULL
+                """,
+                googleSub,
+                id
+        );
+    }
+
+    @Override
     public void insert(UserAccount user) {
         jdbc.update(
                 """
-                INSERT INTO "User" (id, email, password, name, role, "createdAt", "updatedAt")
-                VALUES (?, ?, ?, ?, ?::"Role", CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO "User" (id, email, password, name, role, google_sub, "createdAt", "updatedAt")
+                VALUES (?, ?, ?, ?, ?::"Role", ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
                 user.id(),
                 user.email(),
                 user.passwordHash(),
                 user.name(),
-                user.role().name()
+                user.role().name(),
+                user.googleSub()
         );
     }
 
@@ -109,7 +123,8 @@ public class JdbcUserRepository implements UserRepository {
                 rs.getString("email"),
                 rs.getString("name"),
                 rs.getString("password"),
-                Role.valueOf(rs.getString("role"))
+                Role.valueOf(rs.getString("role")),
+                rs.getString("google_sub")
         );
     }
 }
