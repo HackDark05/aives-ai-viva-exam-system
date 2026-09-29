@@ -1,3 +1,5 @@
+import { decodeTokenClaims, type TokenClaims } from "@/lib/session-token";
+
 const TOKEN_KEY = "aives_token";
 const SEVEN_DAYS = 60 * 60 * 24 * 7;
 
@@ -19,25 +21,9 @@ export function clearSession() {
   document.cookie = `aives_session=; path=/; max-age=0; samesite=lax`;
 }
 
-type JwtBody = {
-  sub?: string;
-  email?: string;
-  role?: "STUDENT" | "EXAMINER" | "ADMIN";
-};
-
-export function readTokenClaims(token = getAccessToken()): JwtBody | null {
+export function readTokenClaims(token = getAccessToken()): TokenClaims | null {
   if (!token) {
     return null;
   }
-
-  try {
-    const [, payload] = token.split(".");
-    if (!payload) {
-      return null;
-    }
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(json) as JwtBody;
-  } catch {
-    return null;
-  }
+  return decodeTokenClaims(token);
 }

@@ -62,5 +62,36 @@ public class SchemaInitializer implements ApplicationRunner {
                 ON knowledge_chunk USING hnsw (embedding vector_cosine_ops)
                 """
         );
+        jdbc.execute(
+                """
+                DO $$
+                BEGIN
+                    CREATE TYPE exam_format AS ENUM ('MULTIPLE_CHOICE', 'ORAL');
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$
+                """
+        );
+        jdbc.execute(
+                """
+                DO $$
+                BEGIN
+                    CREATE TYPE exam_status AS ENUM ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED');
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$
+                """
+        );
+        jdbc.execute(
+                """
+                CREATE TABLE IF NOT EXISTS exam (
+                    id UUID PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    format exam_format NOT NULL,
+                    status exam_status NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+        );
     }
 }

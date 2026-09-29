@@ -1,18 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  BookOpenIcon,
-  ClipboardListIcon,
-  Loader2Icon,
-  LogOutIcon,
-  MicIcon,
-  SparklesIcon,
-} from "lucide-react";
-import { toast } from "sonner";
-import { BrandMark } from "@/components/brand-mark";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import Link from "next/link";
+import { BookOpenIcon, ClipboardListIcon, Loader2Icon, MicIcon, ShieldIcon, SparklesIcon } from "lucide-react";
+import { AppHeader } from "@/components/app-header";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -20,20 +11,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import { api, ApiError } from "@/lib/api";
-import { clearSession } from "@/lib/auth";
-import { ROLE_LABEL, type MeResponse, type User } from "@/lib/types";
-import { AssignRoles } from "@/components/assign-roles";
+import { readTokenClaims } from "@/lib/auth";
+import { useCurrentUser } from "@/lib/use-current-user";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -42,48 +22,8 @@ function greeting() {
   return "Good evening";
 }
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 export function HomeView() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    api<MeResponse>("/api/auth/me", { auth: true })
-      .then((result) => {
-        if (!cancelled) {
-          setUser(result.user);
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        if (error instanceof ApiError && error.status === 401) {
-          router.replace("/login");
-          return;
-        }
-        toast.error("Could not load your session.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  function signOut() {
-    clearSession();
-    void api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    router.replace("/login");
-    router.refresh();
-  }
+  const { user, signOut } = useCurrentUser();
 
   if (!user) {
     return (
@@ -94,53 +34,12 @@ export function HomeView() {
   }
 
   const firstName = user.name.split(" ")[0];
+  const canOpenAdmin =
+    user.role === "ADMIN" && readTokenClaims()?.role === "ADMIN";
 
   return (
     <div className="min-h-svh bg-background">
-      <header className="border-b bg-card/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <BrandMark className="size-8 text-base" />
-            <div className="leading-tight">
-              <p className="font-serif text-lg">AIVES</p>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                Viva workspace
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted-foreground sm:block">
-              {ROLE_LABEL[user.role]}
-            </span>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-10 items-center gap-2 rounded-lg px-1.5 text-sm hover:bg-muted sm:px-2.5">
-                <Avatar size="sm">
-                  <AvatarFallback>{initials(user.name)}</AvatarFallback>
-                </Avatar>
-                <span className="hidden max-w-40 truncate sm:inline">
-                  {user.name}
-                </span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="font-normal">
-                    <p className="font-medium">{user.name}</p>
-                    <p className="text-xs font-normal text-muted-foreground">
-                      {user.email}
-                    </p>
-                  </DropdownMenuLabel>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={signOut}>
-                  <LogOutIcon />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </header>
+      <AppHeader user={user} onSignOut={signOut} />
 
       <main className="mx-auto max-w-6xl space-y-8 px-6 py-10">
         <section className="flex flex-col gap-2">
@@ -177,6 +76,29 @@ export function HomeView() {
           />
         </section>
 
+        {user.role === "ADMIN" ? (
+          <Card className="bg-card">
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 font-serif text-2xl">
+                <ShieldIcon className="size-5" />
+                Administration
+              </CardTitle>
+              <CardDescription>
+                {canOpenAdmin
+                  ? "Roles and people live on the admin dashboard."
+                  : "Sign out and sign in again so this session can open the admin dashboard."}
+              </CardDescription>
+            </CardHeader>
+            {canOpenAdmin ? (
+              <CardContent>
+                <Link href="/admin" className={buttonVariants()}>
+                  Open dashboard
+                </Link>
+              </CardContent>
+            ) : null}
+          </Card>
+        ) : null}
+
         <Card className="bg-card">
           <CardHeader className="border-b">
             <CardTitle className="font-serif text-2xl">Viva sessions</CardTitle>
@@ -198,17 +120,6 @@ export function HomeView() {
             </div>
           </CardContent>
         </Card>
-
-        {user.role === "ADMIN" ? (
-          <AssignRoles
-            currentUserId={user.id}
-            onAssigned={(updated) => {
-              if (updated.id === user.id) {
-                setUser(updated);
-              }
-            }}
-          />
-        ) : null}
       </main>
     </div>
   );

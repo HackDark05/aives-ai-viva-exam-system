@@ -22,12 +22,12 @@ const DEMO_ACCOUNTS = [
   {
     email: "priya.s@example.net",
     password: "demo1234",
-    role: "Examiner",
+    role: "Teacher",
   },
   {
     email: "ivan.p@example.net",
     password: "demo1234",
-    role: "Candidate",
+    role: "Student",
   },
 ] as const;
 
