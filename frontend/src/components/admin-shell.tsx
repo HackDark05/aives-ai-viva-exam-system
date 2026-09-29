@@ -10,9 +10,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpenIcon,
+  ClipboardListIcon,
   LayoutDashboardIcon,
   Loader2Icon,
   LogOutIcon,
+  SettingsIcon,
   UsersIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +36,8 @@ import { cn } from "cn";
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboardIcon, exact: true },
   { href: "/admin/people", label: "People", icon: UsersIcon, exact: false },
+  { href: "/admin/performance", label: "Performance", icon: ClipboardListIcon, exact: false },
+  { href: "/admin/settings", label: "Settings", icon: SettingsIcon, exact: false },
   { href: "/admin/knowledge", label: "Knowledge", icon: BookOpenIcon, exact: false },
 ] as const;
 

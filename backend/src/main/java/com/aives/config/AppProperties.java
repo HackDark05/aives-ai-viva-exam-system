@@ -8,7 +8,6 @@ public record AppProperties(
         String jwtSecret,
         Duration jwtTtl,
         String frontendUrl,
-        String demoPassword,
         String googleClientId
 ) {
 }

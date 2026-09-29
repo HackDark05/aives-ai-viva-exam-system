@@ -11,25 +11,8 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
 import { setSession } from "@/lib/auth";
+import { homeForRole } from "@/lib/role-home";
 import type { LoginResponse } from "@/lib/types";
-
-const DEMO_ACCOUNTS = [
-  {
-    email: "jordan.h@example.net",
-    password: "demo1234",
-    role: "Administrator",
-  },
-  {
-    email: "priya.s@example.net",
-    password: "demo1234",
-    role: "Teacher",
-  },
-  {
-    email: "ivan.p@example.net",
-    password: "demo1234",
-    role: "Student",
-  },
-] as const;
 
 export function LoginScreen() {
   const router = useRouter();
@@ -43,7 +26,7 @@ export function LoginScreen() {
   function finish(result: LoginResponse) {
     setSession(result.accessToken);
     toast.success(`Welcome, ${result.user.name.split(" ")[0]}.`);
-    router.replace("/");
+    router.replace(homeForRole(result.user.role));
     router.refresh();
   }
 
@@ -207,7 +190,7 @@ export function LoginScreen() {
                   required
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="ivan.p@example.net"
+                  placeholder="you@university.edu"
                   className="h-11 px-3"
                 />
               </Field>
@@ -273,36 +256,6 @@ export function LoginScreen() {
               {mode === "create" ? "Sign in" : "Create an account"}
             </Button>
           </p>
-
-          <div className="mt-8 space-y-3 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              Demo accounts
-            </p>
-            {DEMO_ACCOUNTS.map((account) => (
-              <div
-                key={account.email}
-                className="flex items-start justify-between gap-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{account.role}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {account.email}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="link"
-                  className="h-auto px-0 text-sm"
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword(account.password);
-                  }}
-                >
-                  Use
-                </Button>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
     </main>

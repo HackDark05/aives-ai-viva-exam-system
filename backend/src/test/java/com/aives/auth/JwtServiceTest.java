@@ -16,7 +16,6 @@ class JwtServiceTest {
                 "aives-dev-jwt-secret-change-me",
                 Duration.ofDays(7),
                 "http://localhost:3001",
-                "demo1234",
                 ""
         ));
         UserAccount user = new UserAccount("user-1", "jordan.h@example.net", "Jordan Hale", "hash", Role.ADMIN, null);
