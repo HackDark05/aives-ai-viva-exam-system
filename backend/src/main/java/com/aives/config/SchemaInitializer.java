@@ -41,7 +41,10 @@ public class SchemaInitializer implements ApplicationRunner {
                 )
                 """
         );
+        jdbc.execute("ALTER TABLE \"User\" ALTER COLUMN password DROP NOT NULL");
+        jdbc.execute("ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS google_sub TEXT");
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS \"User_email_key\" ON \"User\" (email)");
+        jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS \"User_google_sub_key\" ON \"User\" (google_sub)");
         jdbc.execute(
                 """
                 CREATE TABLE IF NOT EXISTS knowledge_chunk (
@@ -57,6 +60,37 @@ public class SchemaInitializer implements ApplicationRunner {
                 """
                 CREATE INDEX IF NOT EXISTS knowledge_chunk_embedding_idx
                 ON knowledge_chunk USING hnsw (embedding vector_cosine_ops)
+                """
+        );
+        jdbc.execute(
+                """
+                DO $$
+                BEGIN
+                    CREATE TYPE exam_format AS ENUM ('MULTIPLE_CHOICE', 'ORAL');
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$
+                """
+        );
+        jdbc.execute(
+                """
+                DO $$
+                BEGIN
+                    CREATE TYPE exam_status AS ENUM ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED');
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$
+                """
+        );
+        jdbc.execute(
+                """
+                CREATE TABLE IF NOT EXISTS exam (
+                    id UUID PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    format exam_format NOT NULL,
+                    status exam_status NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
                 """
         );
     }

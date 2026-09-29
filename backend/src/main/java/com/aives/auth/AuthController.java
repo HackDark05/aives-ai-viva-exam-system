@@ -2,6 +2,7 @@ package com.aives.auth;
 
 import com.aives.auth.AuthService.LoginResponse;
 import com.aives.auth.AuthService.MeResponse;
+import com.aives.config.AppProperties;
 import com.aives.user.PublicUser;
 import jakarta.validation.Valid;
 import java.util.Map;
@@ -17,14 +18,32 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService auth;
+    private final AppProperties properties;
 
-    public AuthController(AuthService auth) {
+    public AuthController(AuthService auth, AppProperties properties) {
         this.auth = auth;
+        this.properties = properties;
+    }
+
+    @GetMapping("/config")
+    public Map<String, String> config() {
+        String clientId = properties.googleClientId() == null ? "" : properties.googleClientId();
+        return Map.of("clientId", clientId);
     }
 
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return auth.login(request.email(), request.password());
+    }
+
+    @PostMapping("/register")
+    public LoginResponse register(@Valid @RequestBody RegisterRequest request) {
+        return auth.register(request.name(), request.email(), request.password());
+    }
+
+    @PostMapping("/google")
+    public LoginResponse google(@Valid @RequestBody GoogleLoginRequest request) {
+        return auth.google(request.idToken());
     }
 
     @GetMapping("/me")

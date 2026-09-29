@@ -5,51 +5,111 @@ import { useRouter } from "next/navigation";
 import { EyeIcon, EyeOffIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/brand-mark";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
 import { setSession } from "@/lib/auth";
-import type { LoginResponse } from "@/lib/types";
+import { homeForRole } from "@/lib/role-home";
+import { ROLE_LABEL, type LoginResponse, type Role } from "@/lib/types";
+import { cn } from "cn";
 
 const DEMO_ACCOUNTS = [
   {
     email: "jordan.h@example.net",
     password: "demo1234",
-    role: "Administrator",
+    role: "ADMIN",
   },
   {
     email: "priya.s@example.net",
     password: "demo1234",
-    role: "Examiner",
+    role: "EXAMINER",
   },
   {
     email: "ivan.p@example.net",
     password: "demo1234",
-    role: "Candidate",
+    role: "STUDENT",
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  email: string;
+  password: string;
+  role: Role;
+}>;
+
+const ROLE_CHOICES: { value: Role; label: string }[] = [
+  { value: "STUDENT", label: "Student" },
+  { value: "EXAMINER", label: "Teacher" },
+  { value: "ADMIN", label: "Administrator" },
+];
 
 export function LoginScreen() {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+
+  function finish(result: LoginResponse, chosenRole: Role) {
+    if (result.user.role !== chosenRole) {
+      toast.error(
+        `This account is a ${ROLE_LABEL[result.user.role]}. Choose that role to enter.`,
+      );
+      return;
+    }
+    setSession(result.accessToken);
+    toast.success(`Welcome, ${result.user.name.split(" ")[0]}.`);
+    router.replace(homeForRole(result.user.role));
+    router.refresh();
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const chosenRole = mode === "create" ? "STUDENT" : selectedRole;
+    if (!chosenRole) {
+      toast.error("Choose Student, Teacher, or Administrator to enter.");
+      return;
+    }
     setSubmitting(true);
 
     try {
-      const result = await api<LoginResponse>("/api/auth/login", {
+      const result = await api<LoginResponse>(
+        mode === "create" ? "/api/auth/register" : "/api/auth/login",
+        {
+          method: "POST",
+          body:
+            mode === "create"
+              ? { name, email, password }
+              : { email, password },
+        },
+      );
+      finish(result, chosenRole);
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : "Unable to reach the AIVES API. Is the backend running?";
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onGoogleCredential(idToken: string) {
+    if (!selectedRole) {
+      toast.error("Choose Student, Teacher, or Administrator to enter.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await api<LoginResponse>("/api/auth/google", {
         method: "POST",
-        body: { email, password },
+        body: { idToken },
       });
-      setSession(result.accessToken);
-      toast.success(`Welcome back, ${result.user.name.split(" ")[0]}.`);
-      router.replace("/");
-      router.refresh();
+      finish(result, selectedRole);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -131,16 +191,69 @@ export function LoginScreen() {
 
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-              Sign in
+              {mode === "create" ? "Create account" : "Sign in"}
             </p>
-            <h1 className="font-serif text-4xl tracking-tight">Enter the hall</h1>
+            <h1 className="font-serif text-4xl tracking-tight">
+              {mode === "create" ? "Join the hall" : "Enter the hall"}
+            </h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              Use your department account to open the viva workspace.
+              {mode === "create"
+                ? "New accounts enter as a student."
+                : "Choose a role, then sign in to open that screen."}
             </p>
           </div>
 
-          <form className="mt-8 space-y-6" onSubmit={onSubmit}>
+          <div className="mt-8 space-y-4">
+            <GoogleSignInButton disabled={submitting} onCredential={onGoogleCredential} />
+            <div className="flex items-center gap-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />
+              or
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </div>
+
+          <form className="mt-4 space-y-6" onSubmit={onSubmit}>
+            {mode === "sign-in" ? (
+              <fieldset>
+                <legend className="text-sm font-medium">Role</legend>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {ROLE_CHOICES.map((choice) => {
+                    const selected = selectedRole === choice.value;
+                    return (
+                      <button
+                        key={choice.value}
+                        type="button"
+                        aria-pressed={selected}
+                        className={cn(
+                          "h-11 rounded-lg border text-sm",
+                          selected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-input bg-background text-foreground hover:bg-muted",
+                        )}
+                        onClick={() => setSelectedRole(choice.value)}
+                      >
+                        {choice.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
             <FieldGroup>
+              {mode === "create" ? (
+                <Field>
+                  <FieldLabel htmlFor="name">Name</FieldLabel>
+                  <Input
+                    id="name"
+                    autoComplete="name"
+                    required
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Alex Rivera"
+                    className="h-11 px-3"
+                  />
+                </Field>
+              ) : null}
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
@@ -160,7 +273,7 @@ export function LoginScreen() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
+                    autoComplete={mode === "create" ? "new-password" : "current-password"}
                     required
                     minLength={8}
                     value={password}
@@ -192,16 +305,30 @@ export function LoginScreen() {
               className="h-11 w-full"
               disabled={submitting}
             >
-              {submitting ? (
+                {submitting ? (
                 <>
                   <Loader2Icon className="animate-spin" />
-                  Checking credentials
+                  {mode === "create" ? "Creating account" : "Checking credentials"}
                 </>
+              ) : mode === "create" ? (
+                "Create account"
               ) : (
                 "Continue"
               )}
             </Button>
           </form>
+
+          <p className="mt-4 text-sm text-muted-foreground">
+            {mode === "create" ? "Already have an account?" : "New here?"}{" "}
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto px-0 text-sm"
+              onClick={() => setMode((current) => (current === "create" ? "sign-in" : "create"))}
+            >
+              {mode === "create" ? "Sign in" : "Create an account"}
+            </Button>
+          </p>
 
           <div className="mt-8 space-y-3 rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -213,7 +340,7 @@ export function LoginScreen() {
                 className="flex items-start justify-between gap-3"
               >
                 <div>
-                  <p className="text-sm font-medium">{account.role}</p>
+                  <p className="text-sm font-medium">{ROLE_LABEL[account.role]}</p>
                   <p className="text-xs text-muted-foreground">
                     {account.email}
                   </p>
@@ -223,6 +350,8 @@ export function LoginScreen() {
                   variant="link"
                   className="h-auto px-0 text-sm"
                   onClick={() => {
+                    setMode("sign-in");
+                    setSelectedRole(account.role);
                     setEmail(account.email);
                     setPassword(account.password);
                   }}

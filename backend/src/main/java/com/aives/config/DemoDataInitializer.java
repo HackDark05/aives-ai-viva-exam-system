@@ -7,6 +7,7 @@ import com.aives.user.UserRepository;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -41,21 +42,33 @@ public class DemoDataInitializer implements ApplicationRunner {
             )
     );
 
+    private static final List<DemoExam> DEMO_EXAMS = List.of(
+            new DemoExam("Algorithms quiz", "MULTIPLE_CHOICE", "IN_PROGRESS"),
+            new DemoExam("Midterm viva, group A", "ORAL", "IN_PROGRESS"),
+            new DemoExam("Midterm viva, group B", "ORAL", "IN_PROGRESS"),
+            new DemoExam("Coursework quiz", "MULTIPLE_CHOICE", "SCHEDULED"),
+            new DemoExam("Lab viva", "ORAL", "SCHEDULED"),
+            new DemoExam("Orientation quiz", "MULTIPLE_CHOICE", "COMPLETED")
+    );
+
     private final UserRepository users;
     private final KnowledgeService knowledge;
     private final PasswordEncoder passwords;
     private final AppProperties properties;
+    private final JdbcTemplate jdbc;
 
     public DemoDataInitializer(
             UserRepository users,
             KnowledgeService knowledge,
             PasswordEncoder passwords,
-            AppProperties properties
+            AppProperties properties,
+            JdbcTemplate jdbc
     ) {
         this.users = users;
         this.knowledge = knowledge;
         this.passwords = passwords;
         this.properties = properties;
+        this.jdbc = jdbc;
     }
 
     @Override
@@ -65,7 +78,7 @@ public class DemoDataInitializer implements ApplicationRunner {
             if (users.findByEmail(demo.email()).isPresent()) {
                 continue;
             }
-            users.insert(new UserAccount(UUID.randomUUID().toString(), demo.email(), demo.name(), passwordHash, demo.role()));
+            users.insert(new UserAccount(UUID.randomUUID().toString(), demo.email(), demo.name(), passwordHash, demo.role(), null));
             log.info("Seeded {} {}", demo.role().name().toLowerCase(), demo.email());
         }
 
@@ -75,11 +88,31 @@ public class DemoDataInitializer implements ApplicationRunner {
             }
             log.info("Stored {} demo knowledge embeddings", DEMO_KNOWLEDGE.size());
         }
+
+        Long exams = jdbc.queryForObject("SELECT count(*) FROM exam", Long.class);
+        if (exams != null && exams == 0) {
+            for (DemoExam exam : DEMO_EXAMS) {
+                jdbc.update(
+                        """
+                        INSERT INTO exam (id, title, format, status)
+                        VALUES (?::uuid, ?, ?::exam_format, ?::exam_status)
+                        """,
+                        UUID.randomUUID().toString(),
+                        exam.title(),
+                        exam.format(),
+                        exam.status()
+                );
+            }
+            log.info("Seeded {} demo exams", DEMO_EXAMS.size());
+        }
     }
 
     private record DemoUser(String email, String name, Role role) {
     }
 
     private record DemoChunk(String title, String content) {
+    }
+
+    private record DemoExam(String title, String format, String status) {
     }
 }
