@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { homeForRole } from "@/lib/role-home";
 import { decodeTokenClaims } from "@/lib/session-token";
+import type { Role } from "@/lib/types";
 
 const PUBLIC_PATHS = new Set(["/login"]);
 
@@ -8,9 +10,10 @@ export function proxy(request: NextRequest) {
   const token = request.cookies.get("aives_token")?.value;
   const isAuthed = Boolean(token);
   const { pathname } = request.nextUrl;
+  const role = token ? decodeTokenClaims(token)?.role : undefined;
 
-  if (pathname === "/login" && isAuthed) {
-    return NextResponse.redirect(new URL("/", request.url));
+  if (pathname === "/login" && isAuthed && role) {
+    return NextResponse.redirect(new URL(homeForRole(role), request.url));
   }
 
   if (!PUBLIC_PATHS.has(pathname) && !isAuthed) {
@@ -21,14 +24,28 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    const role = token ? decodeTokenClaims(token)?.role : null;
-    if (role !== "ADMIN") {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
+  if (isAuthed && role && pathname === "/") {
+    return NextResponse.redirect(new URL(homeForRole(role), request.url));
+  }
+
+  if (isAuthed && role && !matchesPortal(pathname, role)) {
+    return NextResponse.redirect(new URL(homeForRole(role), request.url));
   }
 
   return NextResponse.next();
+}
+
+function matchesPortal(pathname: string, role: Role | undefined) {
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    return role === "ADMIN";
+  }
+  if (pathname === "/teacher" || pathname.startsWith("/teacher/")) {
+    return role === "EXAMINER";
+  }
+  if (pathname === "/student" || pathname.startsWith("/student/")) {
+    return role === "STUDENT";
+  }
+  return true;
 }
 
 export const config = {
