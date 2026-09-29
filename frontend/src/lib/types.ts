@@ -3,8 +3,8 @@ export type Role = "STUDENT" | "EXAMINER" | "ADMIN";
 export const ROLES: Role[] = ["STUDENT", "EXAMINER", "ADMIN"];
 
 export const ROLE_LABEL: Record<Role, string> = {
-  STUDENT: "Candidate",
-  EXAMINER: "Examiner",
+  STUDENT: "Student",
+  EXAMINER: "Teacher",
   ADMIN: "Administrator",
 };
 

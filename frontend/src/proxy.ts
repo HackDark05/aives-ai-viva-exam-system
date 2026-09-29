@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { decodeTokenClaims } from "@/lib/session-token";
 
 const PUBLIC_PATHS = new Set(["/login"]);
 
 export function proxy(request: NextRequest) {
-  const isAuthed = request.cookies.has("aives_token");
+  const token = request.cookies.get("aives_token")?.value;
+  const isAuthed = Boolean(token);
   const { pathname } = request.nextUrl;
 
   if (pathname === "/login" && isAuthed) {
@@ -17,6 +19,13 @@ export function proxy(request: NextRequest) {
       loginUrl.searchParams.set("from", pathname);
     }
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    const role = token ? decodeTokenClaims(token)?.role : null;
+    if (role !== "ADMIN") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return NextResponse.next();
