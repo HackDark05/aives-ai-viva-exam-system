@@ -1,14 +1,18 @@
 package com.aives.teaching;
 
+import com.aives.rag.DocumentIngestionService.IngestedDocument;
 import com.aives.teaching.DeskRecords.AttemptItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SubjectItem;
 import com.aives.user.PublicUser;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/teaching")
@@ -37,6 +42,23 @@ public class TeachingController {
     @GetMapping("/rubrics")
     public List<RubricItem> rubrics() {
         return teaching.rubrics();
+    }
+
+    @GetMapping("/documents")
+    public List<IngestedDocument> documents(
+            @AuthenticationPrincipal PublicUser teacher,
+            @RequestParam String subjectId
+    ) {
+        return teaching.documents(teacher, subjectId);
+    }
+
+    @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public IngestedDocument upload(
+            @AuthenticationPrincipal PublicUser teacher,
+            @RequestParam String subjectId,
+            @RequestParam MultipartFile file
+    ) {
+        return teaching.upload(teacher, subjectId, file);
     }
 
     @GetMapping("/questions")
@@ -84,7 +106,8 @@ public class TeachingController {
                 request.subjectId(),
                 request.topic(),
                 request.bloom(),
-                request.rubricId()
+                request.rubricId(),
+                request.count()
         );
     }
 
@@ -134,7 +157,8 @@ public class TeachingController {
             @NotBlank String subjectId,
             @NotBlank String topic,
             @NotBlank String bloom,
-            @NotBlank String rubricId
+            @NotBlank String rubricId,
+            @Min(1) @Max(10) int count
     ) {
     }
 
