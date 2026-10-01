@@ -26,7 +26,8 @@ public final class DeskRecords {
             int maxScore,
             String status,
             String source,
-            String authorName
+            String authorName,
+            String sourceRef
     ) {
     }
 

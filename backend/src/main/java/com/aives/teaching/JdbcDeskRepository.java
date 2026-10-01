@@ -85,7 +85,8 @@ public class JdbcDeskRepository {
     public List<QuestionItem> questions(String status) {
         String sql = """
                 SELECT q.id::text, q.subject_id::text, s.name, q.topic, q.prompt, q.bloom,
-                       q.rubric_id::text, r.name, r.criteria, r.max_score, q.status, q.source, u.name
+                       q.rubric_id::text, r.name, r.criteria, r.max_score, q.status, q.source, u.name,
+                       q.source_ref
                 FROM bank_question q
                 JOIN subject s ON s.id = q.subject_id
                 JOIN rubric r ON r.id = q.rubric_id
@@ -106,13 +107,14 @@ public class JdbcDeskRepository {
             String rubricId,
             String status,
             String source,
-            String authorId
+            String authorId,
+            String sourceRef
     ) {
         jdbc.update(
                 """
                 INSERT INTO bank_question
-                    (id, subject_id, topic, prompt, bloom, rubric_id, status, source, author_id)
-                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::uuid, ?, ?, ?)
+                    (id, subject_id, topic, prompt, bloom, rubric_id, status, source, author_id, source_ref)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::uuid, ?, ?, ?, ?)
                 """,
                 id.toString(),
                 subjectId,
@@ -122,7 +124,8 @@ public class JdbcDeskRepository {
                 rubricId,
                 status,
                 source,
-                authorId
+                authorId,
+                sourceRef
         );
     }
 
@@ -144,7 +147,8 @@ public class JdbcDeskRepository {
         List<QuestionItem> rows = jdbc.query(
                 """
                 SELECT q.id::text, q.subject_id::text, s.name, q.topic, q.prompt, q.bloom,
-                       q.rubric_id::text, r.name, r.criteria, r.max_score, q.status, q.source, u.name
+                       q.rubric_id::text, r.name, r.criteria, r.max_score, q.status, q.source, u.name,
+                       q.source_ref
                 FROM bank_question q
                 JOIN subject s ON s.id = q.subject_id
                 JOIN rubric r ON r.id = q.rubric_id
@@ -214,7 +218,8 @@ public class JdbcDeskRepository {
         return jdbc.query(
                 """
                 SELECT q.id::text, q.subject_id::text, s.name, q.topic, q.prompt, q.bloom,
-                       q.rubric_id::text, r.name, r.criteria, r.max_score, q.status, q.source, u.name
+                       q.rubric_id::text, r.name, r.criteria, r.max_score, q.status, q.source, u.name,
+                       q.source_ref
                 FROM exam_question eq
                 JOIN bank_question q ON q.id = eq.question_id
                 JOIN subject s ON s.id = q.subject_id
@@ -372,7 +377,8 @@ public class JdbcDeskRepository {
                 rs.getInt(10),
                 rs.getString(11),
                 rs.getString(12),
-                rs.getString(13)
+                rs.getString(13),
+                rs.getString(14)
         );
     }
 

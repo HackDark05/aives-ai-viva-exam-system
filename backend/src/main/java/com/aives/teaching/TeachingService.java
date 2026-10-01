@@ -1,17 +1,21 @@
 package com.aives.teaching;
 
-import com.aives.knowledge.KnowledgeMatch;
-import com.aives.knowledge.KnowledgeService;
+import com.aives.rag.DocumentIngestionService;
+import com.aives.rag.DocumentIngestionService.IngestedDocument;
+import com.aives.rag.GeneratedQuestionParser.Draft;
+import com.aives.rag.VivaQuestionGenerator;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SubjectItem;
 import com.aives.user.PublicUser;
 import com.aives.web.ApiException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class TeachingService {
@@ -20,15 +24,31 @@ public class TeachingService {
     private static final Set<String> FORMATS = Set.of("MULTIPLE_CHOICE", "ORAL");
 
     private final JdbcDeskRepository desk;
-    private final KnowledgeService knowledge;
+    private final DocumentIngestionService ingestion;
+    private final VivaQuestionGenerator generator;
 
-    public TeachingService(JdbcDeskRepository desk, KnowledgeService knowledge) {
+    public TeachingService(
+            JdbcDeskRepository desk,
+            DocumentIngestionService ingestion,
+            VivaQuestionGenerator generator
+    ) {
         this.desk = desk;
-        this.knowledge = knowledge;
+        this.ingestion = ingestion;
+        this.generator = generator;
     }
 
     public List<SubjectItem> mySubjects(PublicUser teacher) {
         return desk.subjectsForTeacher(teacher.id());
+    }
+
+    public List<IngestedDocument> documents(PublicUser teacher, String subjectId) {
+        requireSubject(teacher.id(), subjectId);
+        return ingestion.list(teacher.id(), subjectId);
+    }
+
+    public IngestedDocument upload(PublicUser teacher, String subjectId, MultipartFile file) {
+        requireSubject(teacher.id(), subjectId);
+        return ingestion.ingest(teacher.id(), subjectId, file);
     }
 
     public List<RubricItem> rubrics() {
@@ -39,9 +59,16 @@ public class TeachingService {
         return desk.questions(status);
     }
 
-    public QuestionItem create(PublicUser teacher, String subjectId, String topic, String prompt, String bloom, String rubricId) {
+    public QuestionItem create(
+            PublicUser teacher,
+            String subjectId,
+            String topic,
+            String prompt,
+            String bloom,
+            String rubricId
+    ) {
         requireSubject(teacher.id(), subjectId);
-        return save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "MANUAL");
+        return save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "MANUAL", null);
     }
 
     public List<QuestionItem> importLines(
@@ -54,13 +81,13 @@ public class TeachingService {
     ) {
         requireSubject(teacher.id(), subjectId);
         requireBloom(bloom);
-        List<QuestionItem> created = new java.util.ArrayList<>();
+        List<QuestionItem> created = new ArrayList<>();
         for (String line : text.split("\\R")) {
             String prompt = line.trim();
             if (prompt.isEmpty()) {
                 continue;
             }
-            created.add(save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "IMPORT"));
+            created.add(save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "IMPORT", null));
         }
         if (created.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Paste at least one question");
@@ -68,17 +95,42 @@ public class TeachingService {
         return created;
     }
 
-    public List<QuestionItem> generate(PublicUser teacher, String subjectId, String topic, String bloom, String rubricId) {
+    public List<QuestionItem> generate(
+            PublicUser teacher,
+            String subjectId,
+            String topic,
+            String bloom,
+            String rubricId,
+            int count
+    ) {
         requireSubject(teacher.id(), subjectId);
         requireBloom(bloom);
-        List<KnowledgeMatch> matches = knowledge.search(topic, 4);
-        if (matches.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "No course material matches that topic. Add a passage first.");
+        int bounded = Math.max(1, Math.min(count, 10));
+        List<VivaQuestionGenerator.Passage> passages = ingestion.retrieve(
+                teacher.id(),
+                subjectId,
+                topic,
+                Math.max(bounded * 2, 6)
+        );
+        if (passages.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Upload a PDF, DOCX, or PPTX for this subject before generating questions."
+            );
         }
-        List<QuestionItem> created = new java.util.ArrayList<>();
-        for (KnowledgeMatch match : matches) {
-            String prompt = "From \"" + match.title() + "\": " + firstSentence(match.content());
-            created.add(save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "PENDING_REVIEW", "AI"));
+        List<QuestionItem> created = new ArrayList<>();
+        for (Draft draft : generator.generate(topic, bloom, bounded, passages)) {
+            created.add(save(
+                    teacher.id(),
+                    subjectId,
+                    topic,
+                    draft.prompt(),
+                    bloom,
+                    rubricId,
+                    "PENDING_REVIEW",
+                    "AI",
+                    draft.source()
+            ));
         }
         return created;
     }
@@ -96,7 +148,13 @@ public class TeachingService {
         return desk.question(id);
     }
 
-    public void startExam(PublicUser teacher, String title, String format, String subjectId, List<String> questionIds) {
+    public void startExam(
+            PublicUser teacher,
+            String title,
+            String format,
+            String subjectId,
+            List<String> questionIds
+    ) {
         requireSubject(teacher.id(), subjectId);
         if (!FORMATS.contains(format)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Format must be multiple choice or oral");
@@ -131,14 +189,26 @@ public class TeachingService {
             String bloom,
             String rubricId,
             String status,
-            String source
+            String source,
+            String sourceRef
     ) {
         if (prompt == null || prompt.isBlank() || topic == null || topic.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Topic and prompt are required");
         }
         requireBloom(bloom);
         UUID id = UUID.randomUUID();
-        desk.insertQuestion(id, subjectId, topic.trim(), prompt.trim(), bloom, rubricId, status, source, authorId);
+        desk.insertQuestion(
+                id,
+                subjectId,
+                topic.trim(),
+                prompt.trim(),
+                bloom,
+                rubricId,
+                status,
+                source,
+                authorId,
+                sourceRef
+        );
         return desk.question(id.toString());
     }
 
@@ -152,14 +222,5 @@ public class TeachingService {
         if (!BLOOM.contains(bloom)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Bloom level must be remember, understand, apply, or analyze");
         }
-    }
-
-    private static String firstSentence(String content) {
-        String trimmed = content.trim();
-        int stop = trimmed.indexOf('.');
-        if (stop < 0 || stop > 220) {
-            return trimmed.length() > 220 ? trimmed.substring(0, 220) : trimmed;
-        }
-        return trimmed.substring(0, stop + 1);
     }
 }

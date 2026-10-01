@@ -62,6 +62,9 @@ public class SchemaInitializer implements ApplicationRunner {
                 ON knowledge_chunk USING hnsw (embedding vector_cosine_ops)
                 """
         );
+        jdbc.execute("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS document_id UUID");
+        jdbc.execute("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS source_label TEXT");
+        jdbc.execute("ALTER TABLE knowledge_chunk ADD COLUMN IF NOT EXISTS chunk_index INT");
         jdbc.execute(
                 """
                 DO $$
@@ -135,6 +138,21 @@ public class SchemaInitializer implements ApplicationRunner {
                     status TEXT NOT NULL,
                     source TEXT NOT NULL,
                     author_id TEXT NOT NULL REFERENCES "User"(id),
+                    source_ref TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+        );
+        jdbc.execute("ALTER TABLE bank_question ADD COLUMN IF NOT EXISTS source_ref TEXT");
+        jdbc.execute(
+                """
+                CREATE TABLE IF NOT EXISTS course_document (
+                    id UUID PRIMARY KEY,
+                    teacher_id TEXT NOT NULL REFERENCES "User"(id),
+                    subject_id UUID NOT NULL REFERENCES subject(id),
+                    original_name TEXT NOT NULL,
+                    content_type TEXT NOT NULL,
+                    storage_path TEXT NOT NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
                 """
