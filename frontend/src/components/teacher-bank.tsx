@@ -20,7 +20,10 @@ type Question = {
   maxScore: number;
   status: string;
   source: string;
+  sourceRef: string | null;
 };
+
+type DocumentFile = { id: string; name: string; chunks: number };
 
 const BLOOM = ["REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE"] as const;
 
@@ -33,9 +36,10 @@ export function TeacherBank() {
   const [topic, setTopic] = useState("Oral reasoning");
   const [bloom, setBloom] = useState<(typeof BLOOM)[number]>("UNDERSTAND");
   const [prompt, setPrompt] = useState("");
-  const [materialTitle, setMaterialTitle] = useState("");
-  const [material, setMaterial] = useState("");
   const [importText, setImportText] = useState("");
+  const [documents, setDocuments] = useState<DocumentFile[]>([]);
+  const [count, setCount] = useState(3);
+  const [file, setFile] = useState<File | null>(null);
 
   async function reload() {
     const [nextSubjects, nextRubrics, nextQuestions] = await Promise.all([
@@ -48,6 +52,11 @@ export function TeacherBank() {
     setQuestions(nextQuestions);
     setSubjectId((current) => current || nextSubjects[0]?.id || "");
     setRubricId((current) => current || nextRubrics[0]?.id || "");
+    const chosen = subjectId || nextSubjects[0]?.id;
+    if (chosen) {
+      const files = await api<DocumentFile[]>(`/api/teaching/documents?subjectId=${chosen}`, { auth: true });
+      setDocuments(files);
+    }
   }
 
   useEffect(() => {
@@ -90,17 +99,17 @@ export function TeacherBank() {
 
   async function onMaterial(event: FormEvent) {
     event.preventDefault();
+    if (!file || !subjectId) return;
+    const body = new FormData();
+    body.set("subjectId", subjectId);
+    body.set("file", file);
     try {
-      await api("/api/knowledge", {
-        method: "POST",
-        auth: true,
-        body: { title: materialTitle, content: material },
-      });
-      setMaterialTitle("");
-      setMaterial("");
-      toast.success("Course material stored for retrieval.");
+      await api("/api/teaching/documents", { method: "POST", auth: true, body });
+      setFile(null);
+      toast.success("Document parsed, chunked, and stored for retrieval.");
+      await reload();
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Could not store that material.");
+      toast.error(error instanceof ApiError ? error.message : "Could not read that file.");
     }
   }
 
@@ -109,7 +118,7 @@ export function TeacherBank() {
       const created = await api<Question[]>("/api/teaching/questions/generate", {
         method: "POST",
         auth: true,
-        body: { subjectId, rubricId, topic, bloom },
+        body: { subjectId, rubricId, topic, bloom, count },
       });
       toast.success(`${created.length} drafts are waiting for review.`);
       await reload();
@@ -143,15 +152,26 @@ export function TeacherBank() {
 
       <Card>
         <CardHeader className="border-b">
-          <CardTitle className="font-serif text-2xl">Course material</CardTitle>
-          <CardDescription>Paste a slide or a passage from the syllabus. Generation retrieves the closest passages.</CardDescription>
+          <CardTitle className="font-serif text-2xl">Course documents</CardTitle>
+          <CardDescription>
+            Upload a PDF, DOCX, or PPTX. The file is stored, split into pages or slides, and embedded for retrieval.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-3" onSubmit={onMaterial}>
-            <Input value={materialTitle} onChange={(event) => setMaterialTitle(event.target.value)} placeholder="Title" required />
-            <textarea value={material} onChange={(event) => setMaterial(event.target.value)} required className="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" placeholder="Paste the passage" />
-            <Button type="submit">Store material</Button>
+            <Input
+              type="file"
+              accept=".pdf,.docx,.pptx,application/pdf"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              required
+            />
+            <Button type="submit">Upload document</Button>
           </form>
+          <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
+            {documents.map((document) => (
+              <li key={document.id}>{document.name} · {document.chunks} chunks</li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
 
@@ -177,8 +197,17 @@ export function TeacherBank() {
             <div className="flex flex-wrap gap-2">
               <Button type="submit">Add to bank</Button>
               <Button type="button" variant="outline" onClick={() => void onGenerate()}>
-                Draft from material
+                Draft {count} from material
               </Button>
+              <Input
+                className="w-24"
+                type="number"
+                min={1}
+                max={10}
+                value={count}
+                onChange={(event) => setCount(Number(event.target.value))}
+                aria-label="Number of questions"
+              />
             </div>
           </form>
           <form className="space-y-3" onSubmit={onImport}>
@@ -206,6 +235,7 @@ export function TeacherBank() {
                 <p className="font-medium">{question.prompt}</p>
                 <p className="text-sm text-muted-foreground">
                   {question.rubricName}: {question.criteria} (max {question.maxScore})
+                  {question.sourceRef ? ` · ${question.sourceRef}` : ""}
                 </p>
                 {question.status === "PENDING_REVIEW" ? (
                   <div className="flex gap-2">
