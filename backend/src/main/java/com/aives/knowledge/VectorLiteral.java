@@ -2,12 +2,12 @@ package com.aives.knowledge;
 
 import java.util.Locale;
 
-final class VectorLiteral {
+public final class VectorLiteral {
 
     private VectorLiteral() {
     }
 
-    static String format(float[] values) {
+    public static String format(float[] values) {
         StringBuilder builder = new StringBuilder(values.length * 8 + 2);
         builder.append('[');
         for (int index = 0; index < values.length; index++) {

@@ -12,6 +12,8 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const role = token ? decodeTokenClaims(token)?.role : undefined;
 
+  const role = token ? decodeTokenClaims(token)?.role : undefined;
+
   if (pathname === "/login" && isAuthed && role) {
     return NextResponse.redirect(new URL(homeForRole(role), request.url));
   }
@@ -24,27 +26,17 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isAuthed && role && pathname === "/") {
-    return NextResponse.redirect(new URL(homeForRole(role), request.url));
-  }
-
-  if (isAuthed && role && !matchesPortal(pathname, role)) {
+  if (isAuthed && role && !allows(pathname, role)) {
     return NextResponse.redirect(new URL(homeForRole(role), request.url));
   }
 
   return NextResponse.next();
 }
 
-function matchesPortal(pathname: string, role: Role | undefined) {
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    return role === "ADMIN";
-  }
-  if (pathname === "/teacher" || pathname.startsWith("/teacher/")) {
-    return role === "EXAMINER";
-  }
-  if (pathname === "/student" || pathname.startsWith("/student/")) {
-    return role === "STUDENT";
-  }
+function allows(pathname: string, role: Role) {
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return role === "ADMIN";
+  if (pathname === "/teacher" || pathname.startsWith("/teacher/")) return role === "EXAMINER";
+  if (pathname === "/student" || pathname.startsWith("/student/")) return role === "STUDENT";
   return true;
 }
 

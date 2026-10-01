@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: aives-api
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
   datasource:
     url: jdbc:postgresql://localhost:5433/aives
     username: aives
@@ -13,5 +17,9 @@ app:
   jwt-secret: ${JWT_SECRET:change-me}
   jwt-ttl: 7d
   frontend-url: ${FRONTEND_URL:http://localhost:3001}
-  demo-password: ${DEMO_PASSWORD:demo1234}
   google-client-id: ${GOOGLE_CLIENT_ID:}
+  documents-dir: ${DOCUMENTS_DIR:data/documents}
+  ai:
+    base-url: ${AI_BASE_URL:}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:}

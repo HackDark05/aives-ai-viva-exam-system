@@ -24,11 +24,11 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const response = await fetch(`${API_URL}${path}`, {
     ...rest,
     headers: {
-      "Content-Type": "application/json",
+      ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   });
 
   const payload = (await response.json().catch(() => null)) as

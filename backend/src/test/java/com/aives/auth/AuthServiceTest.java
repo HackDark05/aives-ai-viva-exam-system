@@ -23,7 +23,7 @@ class AuthServiceTest {
     private final AuthService auth = new AuthService(
             users,
             new BCryptPasswordEncoder(10),
-            new JwtService(new AppProperties("test-secret", Duration.ofDays(1), "http://localhost:3001", "demo1234", "")),
+            new JwtService(new AppProperties("test-secret", Duration.ofDays(1), "http://localhost:3001", "", "", null)),
             idToken -> new GoogleAccounts.GoogleProfile("google-subject", "new.person@gmail.com", "New Person")
     );
 

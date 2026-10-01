@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { HomeView } from "@/components/home-view";
+import { StudentTests } from "@/components/student-tests";
 
-export const metadata: Metadata = {
-  title: "Student",
-};
+export const metadata: Metadata = { title: "Tests" };
 
 export default function StudentPage() {
-  return <HomeView portal="STUDENT" />;
+  return <StudentTests />;
 }

@@ -45,17 +45,9 @@ npm run dev
 
 Postgres is mapped to **5433** so it does not collide with other local databases on 5432. The Next.js app uses **3001** for the same reason.
 
-## Demo login
+## Accounts
 
-Password for every demo account: `demo1234`
-
-| Role | Email |
-| --- | --- |
-| Administrator | `jordan.h@example.net` |
-| Examiner | `priya.s@example.net` |
-| Candidate | `ivan.p@example.net` |
-
-Sign in as the administrator to assign roles. Login returns a JWT that includes `sub`, `email`, and `role`.
+The API does not seed users, subjects, exams, or course material. Create an administrator, then assign teachers and students. Login returns a JWT that includes `sub`, `email`, and `role`.
 
 ## Knowledge embeddings
 
