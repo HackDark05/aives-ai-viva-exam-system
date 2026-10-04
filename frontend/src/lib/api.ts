@@ -17,9 +17,21 @@ type ApiOptions = Omit<RequestInit, "body"> & {
   auth?: boolean;
 };
 
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname.startsWith("/login")) return;
+  window.location.replace("/login");
+}
+
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { body, auth = false, headers, ...rest } = options;
   const token = auth ? getAccessToken() : null;
+
+  if (auth && !token) {
+    clearSession();
+    redirectToLogin();
+    throw new ApiError(401, "Missing access token");
+  }
 
   const response = await fetch(`${API_URL}${path}`, {
     ...rest,
@@ -37,10 +49,6 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     | null;
 
   if (!response.ok) {
-    if (response.status === 401) {
-      clearSession();
-    }
-
     const message = Array.isArray(
       payload && "message" in payload ? payload.message : undefined,
     )
@@ -51,6 +59,17 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
           typeof payload.message === "string"
         ? payload.message
         : "Something went wrong";
+
+    if (response.status === 401) {
+      clearSession();
+      const sessionGone =
+        message === "Missing access token" ||
+        message === "Invalid or expired session" ||
+        message === "Account no longer exists";
+      if (sessionGone) {
+        redirectToLogin();
+      }
+    }
 
     throw new ApiError(response.status, message);
   }

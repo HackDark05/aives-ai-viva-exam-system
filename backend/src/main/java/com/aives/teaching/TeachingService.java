@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -39,6 +40,22 @@ public class TeachingService {
 
     public List<SubjectItem> mySubjects(PublicUser teacher) {
         return desk.subjectsForTeacher(teacher.id());
+    }
+
+    public SubjectItem createSubject(PublicUser teacher, String code, String name) {
+        String trimmedCode = code.trim();
+        String trimmedName = name.trim();
+        if (trimmedCode.isEmpty() || trimmedName.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Subject code and name are required");
+        }
+        UUID id = UUID.randomUUID();
+        try {
+            desk.insertSubject(id, trimmedCode, trimmedName);
+        } catch (DuplicateKeyException exception) {
+            throw new ApiException(HttpStatus.CONFLICT, "A subject with that code already exists");
+        }
+        desk.assignTeacher(id.toString(), teacher.id());
+        return new SubjectItem(id.toString(), trimmedCode, trimmedName, List.of(teacher.id()));
     }
 
     public List<IngestedDocument> documents(PublicUser teacher, String subjectId) {
