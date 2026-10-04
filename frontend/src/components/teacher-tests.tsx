@@ -149,29 +149,37 @@ function BloomBar({ bloom, bloomLevels = DEFAULT_BLOOM, height = 8 }: { bloom: n
   )
 }
 
-function Stepper({ value, onChange, min, max, step = 1, unit }: { value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit: string }) {
+function NumberInput({ value, onChange, min, max, unit, label }: { value: number; onChange: (v: number) => void; min: number; max: number; unit: string; label: string }) {
+  const [draft, setDraft] = useState(String(value))
+
   return (
-    <div className="inline-flex items-stretch overflow-hidden rounded-md border border-border bg-card">
-      <button
-        type="button"
-        aria-label="Decrease"
-        onClick={() => onChange(Math.max(min, value - step))}
-        className="w-11 text-xl transition hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        −
-      </button>
-      <div className="flex min-w-28 items-baseline justify-center gap-1.5 border-x border-border px-4 py-2">
-        <span className="font-mono text-2xl font-medium tabular-nums text-foreground">{value}</span>
-        <span className="text-xs text-muted-foreground">{unit}</span>
-      </div>
-      <button
-        type="button"
-        aria-label="Increase"
-        onClick={() => onChange(Math.min(max, value + step))}
-        className="w-11 text-xl transition hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        +
-      </button>
+    <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={draft}
+        aria-label={label}
+        onChange={(e) => {
+          const nextDraft = e.target.value
+          if (!/^\d*$/.test(nextDraft)) return
+          setDraft(nextDraft)
+
+          if (nextDraft !== '') {
+            const nextValue = Number(nextDraft)
+            if (nextValue >= min && nextValue <= max) onChange(nextValue)
+          }
+        }}
+        onBlur={() => {
+          const parsed = Number(draft)
+          const nextValue = Number.isFinite(parsed) && draft !== ''
+            ? Math.min(max, Math.max(min, parsed))
+            : min
+          setDraft(String(nextValue))
+          onChange(nextValue)
+        }}
+        className="w-16 appearance-none bg-transparent text-center font-mono text-2xl font-medium tabular-nums text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      />
+      <span className="text-xs text-muted-foreground">{unit}</span>
     </div>
   )
 }
@@ -307,7 +315,7 @@ export default function TeacherTests({
     }, 1200)
   }
 
-  const maxDuration = Math.ceil(minutes * (1 + followUps * 0.6))
+  const maxDuration = total * minutes * (1 + followUps)
   const langName = (l: 'vi' | 'en') => (l === 'vi' ? 'Vietnamese' : 'English')
 
   return (
@@ -345,11 +353,16 @@ export default function TeacherTests({
                   ['Question bank', hasSubjectData ? bank?.name || '—' : 'Not selected'],
                   ['Rubric', hasSubjectData && bank ? `${bank.rubric || '—'} · ${bank.criteria} criteria` : 'Not selected'],
                   ['STT / TTS', `${langName(stt)} / ${langName(tts)}`],
-                  ['Est. per candidate', `~${maxDuration} min max`],
+                  ['Est. per candidate', total > 0 ? `~${maxDuration} min max` : '—'],
                 ].map(([k, v]) => (
                   <div key={k} className="border-b border-border py-4">
                     <dt className="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">{k}</dt>
                     <dd className="mt-1 text-[15px] leading-snug font-semibold text-foreground">{v}</dd>
+                    {k === 'Est. per candidate' && total > 0 && (
+                      <dd className="mt-1 text-xs text-muted-foreground">
+                        {total} questions × {minutes} min × {followUps + 1} responses max
+                      </dd>
+                    )}
                   </div>
                 ))}
               </dl>
@@ -532,29 +545,11 @@ export default function TeacherTests({
                     <div className="grid gap-8 sm:grid-cols-2">
                       <div>
                         <Label>Answer time limit</Label>
-                        <Stepper value={minutes} onChange={setMinutes} min={1} max={10} step={1} unit="minutes" />
-                        <input
-                          type="range"
-                          min={1}
-                          max={10}
-                          step={1}
-                          value={minutes}
-                          onChange={(e) => setMinutes(+e.target.value)}
-                          className="mt-4 w-full accent-primary"
-                          aria-label="Answer time limit"
-                        />
+                        <NumberInput value={minutes} onChange={setMinutes} min={1} max={120} unit="minutes" label="Answer time limit" />
                       </div>
                       <div>
                         <Label>Adaptive follow-up</Label>
-                        <Stepper value={followUps} onChange={setFollowUps} min={0} max={5} unit="per question" />
-                        <div className="mt-4 flex items-center gap-1.5" aria-hidden>
-                          {[0, 1, 2, 3, 4].map((i) => (
-                            <span
-                              key={i}
-                              className={`h-1.5 flex-1 rounded-full transition ${i < followUps ? 'bg-primary' : 'bg-muted'}`}
-                            />
-                          ))}
-                        </div>
+                        <NumberInput value={followUps} onChange={setFollowUps} min={1} max={20} unit="per question" label="Adaptive follow-up" />
                       </div>
                     </div>
                   </Section>
