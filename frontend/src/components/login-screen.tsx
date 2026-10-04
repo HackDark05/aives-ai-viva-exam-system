@@ -12,7 +12,14 @@ import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
 import { setSession } from "@/lib/auth";
 import { homeForRole } from "@/lib/role-home";
-import type { LoginResponse } from "@/lib/types";
+import { ROLE_LABEL, type LoginResponse, type Role } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+const ROLE_CHOICES: { value: Role; label: string }[] = [
+  { value: "STUDENT", label: ROLE_LABEL.STUDENT },
+  { value: "EXAMINER", label: ROLE_LABEL.EXAMINER },
+  { value: "ADMIN", label: ROLE_LABEL.ADMIN },
+];
 
 export function LoginScreen() {
   const router = useRouter();
