@@ -39,6 +39,14 @@ public class TeachingController {
         return teaching.mySubjects(teacher);
     }
 
+    @PostMapping("/subjects")
+    public SubjectItem createSubject(
+            @AuthenticationPrincipal PublicUser teacher,
+            @Valid @RequestBody SubjectRequest request
+    ) {
+        return teaching.createSubject(teacher, request.code(), request.name());
+    }
+
     @GetMapping("/rubrics")
     public List<RubricItem> rubrics() {
         return teaching.rubrics();
@@ -133,6 +141,9 @@ public class TeachingController {
             @Valid @RequestBody ScoreRequest request
     ) {
         teaching.score(teacher, id, request.score());
+    }
+
+    public record SubjectRequest(@NotBlank String code, @NotBlank String name) {
     }
 
     public record QuestionRequest(

@@ -1,5 +1,6 @@
 package com.aives.config;
 
+import java.util.UUID;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -188,5 +189,15 @@ public class SchemaInitializer implements ApplicationRunner {
         );
         jdbc.update("INSERT INTO app_setting (key, value) VALUES ('stt_language', 'vi') ON CONFLICT (key) DO NOTHING");
         jdbc.update("INSERT INTO app_setting (key, value) VALUES ('tts_language', 'vi') ON CONFLICT (key) DO NOTHING");
+        Integer rubricCount = jdbc.queryForObject("SELECT count(*) FROM rubric", Integer.class);
+        if (rubricCount != null && rubricCount == 0) {
+            jdbc.update(
+                    "INSERT INTO rubric (id, name, criteria, max_score) VALUES (?::uuid, ?, ?, ?)",
+                    UUID.randomUUID().toString(),
+                    "Oral clarity",
+                    "Answer is accurate, clear, and uses course terms.",
+                    10
+            );
+        }
     }
 }
