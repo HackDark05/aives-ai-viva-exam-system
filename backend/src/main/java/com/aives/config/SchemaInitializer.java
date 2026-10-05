@@ -24,6 +24,6 @@ public class SchemaInitializer {
         if (existing != null) {
             return;
         }
-        new ResourceDatabasePopulator(new ClassPathResource("schema.sql")).execute(dataSource);
+        new ResourceDatabasePopulator(new ClassPathResource("schema.sql"), new ClassPathResource("seed.sql")).execute(dataSource);
     }
 }
