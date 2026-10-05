@@ -19,7 +19,7 @@ cd backend
 mvn spring-boot:run
 ```
 
-The API applies Flyway migrations from `backend/src/main/resources/db/migration` on startup, including `knowledge_chunk.embedding` (`vector(384)`). Text is embedded locally with all-MiniLM-L6-v2 and stored in pgvector. If Postgres was created from the previous image, recreate it once:
+On startup the API creates the schema from `backend/src/main/resources/schema.sql` if the database is empty, including `knowledge_chunk.embedding` (`vector(384)`). Text is embedded locally with all-MiniLM-L6-v2 and stored in pgvector. If Postgres was created from the previous image, recreate it once:
 
 ```bash
 docker compose down -v
