@@ -19,7 +19,7 @@ public class AdminStatsService {
         Map<String, Long> roles = counts(
                 """
                 SELECT r.code AS key, count(*) AS total
-                FROM app_user u
+                FROM "user" u
                 JOIN role r ON r.id = u.role_id
                 GROUP BY r.code
                 """

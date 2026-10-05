@@ -20,7 +20,7 @@ public class SchemaInitializer {
 
     @PostConstruct
     void init() {
-        String existing = jdbc.queryForObject("SELECT to_regclass('public.app_user')::text", String.class);
+        String existing = jdbc.queryForObject("SELECT to_regclass('public.\"user\"')::text", String.class);
         if (existing != null) {
             return;
         }

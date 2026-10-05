@@ -16,7 +16,7 @@ public class JdbcUserRepository implements UserRepository {
     private static final String SELECT = """
             SELECT u.id::text AS id, u.email, u.full_name AS name, u.password_hash AS password,
                    r.code AS role, u.google_sub
-            FROM app_user u
+            FROM "user" u
             JOIN role r ON r.id = u.role_id
             """;
 
@@ -55,7 +55,7 @@ public class JdbcUserRepository implements UserRepository {
     public long countByRole(Role role) {
         Long count = jdbc.queryForObject(
                 """
-                SELECT count(*) FROM app_user u JOIN role r ON r.id = u.role_id WHERE r.code = ?
+                SELECT count(*) FROM "user" u JOIN role r ON r.id = u.role_id WHERE r.code = ?
                 """,
                 Long.class,
                 role.name()
@@ -67,7 +67,7 @@ public class JdbcUserRepository implements UserRepository {
     public UserAccount updateRole(String id, Role role) {
         jdbc.update(
                 """
-                UPDATE app_user
+                UPDATE "user"
                 SET role_id = (SELECT id FROM role WHERE code = ?), updated_at = now()
                 WHERE id = ?::uuid
                 """,
@@ -81,7 +81,7 @@ public class JdbcUserRepository implements UserRepository {
     public void linkGoogleSubject(String id, String googleSub) {
         jdbc.update(
                 """
-                UPDATE app_user
+                UPDATE "user"
                 SET google_sub = ?, updated_at = now()
                 WHERE id = ?::uuid AND google_sub IS NULL
                 """,
@@ -94,7 +94,7 @@ public class JdbcUserRepository implements UserRepository {
     public void insert(UserAccount user) {
         jdbc.update(
                 """
-                INSERT INTO app_user (id, email, password_hash, full_name, role_id, google_sub)
+                INSERT INTO "user" (id, email, password_hash, full_name, role_id, google_sub)
                 VALUES (?::uuid, ?, ?, ?, (SELECT id FROM role WHERE code = ?), ?)
                 """,
                 user.id(),

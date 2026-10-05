@@ -35,15 +35,15 @@ public class JdbcDeskRepository {
             FROM question q
             JOIN course c ON c.id = q.course_id
             JOIN rubric r ON r.id = q.rubric_id
-            JOIN app_user u ON u.id = q.author_id
+            JOIN "user" u ON u.id = q.author_id
             """.formatted(RUBRIC_CRITERIA, RUBRIC_MAX);
 
     private static final String ATTEMPT_SELECT = """
             SELECT a.id::text, e.id::text, e.title, s.full_name, COALESCE(t.full_name, ''), a.score, e.status
             FROM exam_attempt a
             JOIN exam_session e ON e.id = a.session_id
-            JOIN app_user s ON s.id = a.student_id
-            LEFT JOIN app_user t ON t.id = e.teacher_id
+            JOIN "user" s ON s.id = a.student_id
+            LEFT JOIN "user" t ON t.id = e.teacher_id
             """;
 
     private final JdbcTemplate jdbc;
@@ -269,7 +269,7 @@ public class JdbcDeskRepository {
                        a.id IS NOT NULL, a.score
                 FROM exam_session e
                 LEFT JOIN course c ON c.id = e.course_id
-                LEFT JOIN app_user t ON t.id = e.teacher_id
+                LEFT JOIN "user" t ON t.id = e.teacher_id
                 LEFT JOIN exam_attempt a ON a.session_id = e.id AND a.student_id = ?::uuid
                 WHERE e.status = 'IN_PROGRESS'
                 ORDER BY e.created_at DESC
