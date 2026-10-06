@@ -5,6 +5,8 @@ import com.aives.rag.DocumentIngestionService.IngestedDocument;
 import com.aives.rag.GeneratedQuestionParser.Draft;
 import com.aives.rag.VivaQuestionGenerator;
 import com.aives.teaching.DeskRecords.QuestionItem;
+import com.aives.teaching.DeskRecords.RubricCriterionItem;
+import com.aives.teaching.DeskRecords.RubricDetailItem;
 import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SubjectItem;
 import com.aives.user.PublicUser;
@@ -72,6 +74,59 @@ public class TeachingService {
         return desk.rubricsForTeacher(teacher.id());
     }
 
+    public RubricDetailItem rubric(PublicUser teacher, String rubricId) {
+        if (!desk.teacherOwnsRubric(teacher.id(), rubricId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Rubric not found");
+        }
+        RubricDetailItem detail = desk.rubricDetail(rubricId);
+        if (detail == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Rubric not found");
+        }
+        return detail;
+    }
+
+    public RubricDetailItem updateRubric(
+            PublicUser teacher,
+            String rubricId,
+            String name,
+            String description,
+            List<RubricCriterionItem> criteria
+    ) {
+        if (!desk.teacherOwnsRubric(teacher.id(), rubricId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Rubric not found");
+        }
+        String trimmedName = name == null ? "" : name.trim();
+        if (trimmedName.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Rubric name is required");
+        }
+        if (criteria == null || criteria.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "At least one criterion is required");
+        }
+        List<RubricCriterionItem> normalized = new ArrayList<>();
+        int order = 0;
+        for (RubricCriterionItem criterion : criteria) {
+            String criterionName = criterion.name() == null ? "" : criterion.name().trim();
+            if (criterionName.isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Each criterion needs a name");
+            }
+            if (criterion.maxPoints() <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Each criterion needs a positive max score");
+            }
+            String id = criterion.id() == null || criterion.id().isBlank()
+                    ? UUID.randomUUID().toString()
+                    : criterion.id();
+            normalized.add(new RubricCriterionItem(
+                    id,
+                    criterionName,
+                    criterion.description() == null ? "" : criterion.description().trim(),
+                    criterion.maxPoints(),
+                    order++
+            ));
+        }
+        desk.updateRubric(rubricId, trimmedName, description, normalized);
+        return rubric(teacher, rubricId);
+    }
+
     public List<QuestionItem> questions(String status) {
         return desk.questions(status);
     }
@@ -85,7 +140,7 @@ public class TeachingService {
             String rubricId
     ) {
         requireSubject(teacher.id(), subjectId);
-        return save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "MANUAL", null, null);
+        return save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "MANUAL", null, null, null, null);
     }
 
     public List<QuestionItem> importLines(
@@ -104,7 +159,7 @@ public class TeachingService {
             if (prompt.isEmpty()) {
                 continue;
             }
-            created.add(save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "IMPORT", null, null));
+            created.add(save(teacher.id(), subjectId, topic, prompt, bloom, rubricId, "APPROVED", "IMPORT", null, null, null, null));
         }
         if (created.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Paste at least one question");
@@ -159,23 +214,65 @@ public class TeachingService {
                     "PENDING_REVIEW",
                     "AI",
                     draft.source(),
-                    generationId.toString()
+                    generationId.toString(),
+                    draft.expectedAnswer(),
+                    draft.keyPoints()
             ));
         }
         return created;
     }
 
-    public QuestionItem review(PublicUser reviewer, String id, String prompt, String bloom, String status) {
+    public QuestionItem review(
+            PublicUser reviewer,
+            String id,
+            String prompt,
+            String bloom,
+            String status,
+            String topic,
+            String expectedAnswer,
+            String keyPoints
+    ) {
         QuestionItem current = desk.question(id);
         if (current == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Question not found");
         }
+        requireSubject(reviewer.id(), current.subjectId());
         requireBloom(bloom);
         if (!Set.of("PENDING_REVIEW", "APPROVED", "REJECTED").contains(status)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Unknown question status");
         }
-        desk.updateQuestion(id, prompt.trim(), bloom, status, reviewer.id());
+        String nextTopic = topic == null || topic.isBlank() ? current.topic() : topic.trim();
+        if (nextTopic.isBlank() || prompt == null || prompt.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Topic and prompt are required");
+        }
+        String nextExpected = expectedAnswer == null ? current.expectedAnswer() : expectedAnswer.trim();
+        String nextKeyPoints = keyPoints == null ? current.keyPoints() : keyPoints.trim();
+        if (nextExpected != null && nextExpected.isBlank()) {
+            nextExpected = null;
+        }
+        if (nextKeyPoints != null && nextKeyPoints.isBlank()) {
+            nextKeyPoints = null;
+        }
+        desk.updateQuestion(
+                id,
+                nextTopic,
+                prompt.trim(),
+                bloom,
+                status,
+                reviewer.id(),
+                nextExpected,
+                nextKeyPoints
+        );
         return desk.question(id);
+    }
+
+    public void deleteQuestion(PublicUser teacher, String id) {
+        QuestionItem current = desk.question(id);
+        if (current == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Question not found");
+        }
+        requireSubject(teacher.id(), current.subjectId());
+        desk.deleteQuestion(id);
     }
 
     public void startExam(
@@ -221,7 +318,9 @@ public class TeachingService {
             String status,
             String source,
             String sourceRef,
-            String generationId
+            String generationId,
+            String expectedAnswer,
+            String keyPoints
     ) {
         if (prompt == null || prompt.isBlank() || topic == null || topic.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Topic and prompt are required");
@@ -240,9 +339,18 @@ public class TeachingService {
                 source,
                 authorId,
                 sourceRef,
-                generationId
+                generationId,
+                blankToNull(expectedAnswer),
+                blankToNull(keyPoints)
         );
         return desk.question(id.toString());
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private void requireSubject(String teacherId, String subjectId) {

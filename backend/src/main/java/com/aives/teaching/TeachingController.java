@@ -3,6 +3,8 @@ package com.aives.teaching;
 import com.aives.rag.DocumentIngestionService.IngestedDocument;
 import com.aives.teaching.DeskRecords.AttemptItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
+import com.aives.teaching.DeskRecords.RubricCriterionItem;
+import com.aives.teaching.DeskRecords.RubricDetailItem;
 import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SubjectItem;
 import com.aives.user.PublicUser;
@@ -12,15 +14,19 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -50,6 +56,23 @@ public class TeachingController {
     @GetMapping("/rubrics")
     public List<RubricItem> rubrics(@AuthenticationPrincipal PublicUser teacher) {
         return teaching.rubrics(teacher);
+    }
+
+    @GetMapping("/rubrics/{id}")
+    public RubricDetailItem rubric(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        return teaching.rubric(teacher, id);
+    }
+
+    @PutMapping("/rubrics/{id}")
+    public RubricDetailItem updateRubric(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id,
+            @Valid @RequestBody UpdateRubricRequest request
+    ) {
+        return teaching.updateRubric(teacher, id, request.name(), request.description(), request.criteria());
     }
 
     @GetMapping("/documents")
@@ -125,7 +148,25 @@ public class TeachingController {
             @PathVariable String id,
             @Valid @RequestBody ReviewRequest request
     ) {
-        return teaching.review(reviewer, id, request.prompt(), request.bloom(), request.status());
+        return teaching.review(
+                reviewer,
+                id,
+                request.prompt(),
+                request.bloom(),
+                request.status(),
+                request.topic(),
+                request.expectedAnswer(),
+                request.keyPoints()
+        );
+    }
+
+    @DeleteMapping("/questions/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteQuestion(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        teaching.deleteQuestion(teacher, id);
     }
 
     @PostMapping("/exams")
@@ -177,7 +218,14 @@ public class TeachingController {
     ) {
     }
 
-    public record ReviewRequest(@NotBlank String prompt, @NotBlank String bloom, @NotBlank String status) {
+    public record ReviewRequest(
+            @NotBlank String prompt,
+            @NotBlank String bloom,
+            @NotBlank String status,
+            String topic,
+            String expectedAnswer,
+            String keyPoints
+    ) {
     }
 
     public record StartExamRequest(
@@ -189,5 +237,12 @@ public class TeachingController {
     }
 
     public record ScoreRequest(int score) {
+    }
+
+    public record UpdateRubricRequest(
+            @NotBlank String name,
+            String description,
+            @NotNull List<RubricCriterionItem> criteria
+    ) {
     }
 }

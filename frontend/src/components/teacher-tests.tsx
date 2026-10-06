@@ -1,613 +1,585 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Loader2Icon } from "lucide-react";
+import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/teacher/confirm-dialog";
+import { RubricFieldLabel } from "@/components/teacher/rubric-field-label";
+import { TeacherPageHeader } from "@/components/teacher/page-header";
+import { StatusBadge, questionStatusVariant } from "@/components/teacher/status-badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { api, ApiError } from "@/lib/api";
+import { useLocale } from "@/lib/i18n/locale-provider";
+import { formatBloom, formatExamFormat, formatQuestionStatus } from "@/lib/teacher/labels";
+import {
+  resolveRubricIdForSubject,
+  rubricsForSubject,
+  type TeachingRubric,
+} from "@/lib/teacher/rubrics";
 
-// --- TYPES ---
-export type Bank = {
-  id: string
-  name: string
-  rubric: string
-  criteria: number
-  scale: string
-  bloom: [number, number, number, number] | number[]
-  status: 'approved' | 'pending' | string
-  updated: string
-}
+type Subject = { id: string; name: string; code: string };
+type Question = {
+  id: string;
+  subjectId: string;
+  prompt: string;
+  status: string;
+  bloom: string;
+  topic: string;
+  source: string;
+  sourceRef: string | null;
+  expectedAnswer: string | null;
+  keyPoints: string | null;
+};
 
-export type Topic = {gg
-  id: string
-  name: string
-  banks: Bank[]
-}
+const BLOOM = ["REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE"] as const;
 
-export type Subject = {
-  id: string
-  code: string
-  name: string
-  assigned: boolean
-  topics: Topic[]
-}
+export function TeacherTests() {
+  const searchParams = useSearchParams();
+  const { t, locale, messages } = useLocale();
+  const labels = messages.teacher.labels;
+  const [loading, setLoading] = useState(true);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [rubrics, setRubrics] = useState<TeachingRubric[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [subjectId, setSubjectId] = useState("");
+  const [rubricId, setRubricId] = useState("");
+  const [title, setTitle] = useState("");
+  const [format, setFormat] = useState("ORAL");
+  const [topic, setTopic] = useState("Oral reasoning");
+  const [bloom, setBloom] = useState<(typeof BLOOM)[number]>("UNDERSTAND");
+  const [count, setCount] = useState(3);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [generating, setGenerating] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Question | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [materialCount, setMaterialCount] = useState<number | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
-export type Lecturer = {
-  name: string
-  id: string
-  dept?: string
-  initials?: string
-}
-
-export type BloomLevel = {
-  k: string
-  c: string
-}
-
-export type NavigationItem = {
-  label: string
-  icon: string
-  group?: string
-  active?: boolean
-}
-
-export type SessionConfig = {
-  subject: Subject
-  topic: Topic
-  bank: Bank
-  minutes: number
-  followUps: number
-  stt: 'vi' | 'en'
-  tts: 'vi' | 'en'
-}
-
-export interface TeacherTestsProps {
-  subjects?: Subject[]
-  lecturer?: Lecturer
-  navItems?: NavigationItem[]
-  bloomLevels?: BloomLevel[]
-  onStartSession?: (config: SessionConfig) => void
-  onFinishSetup?: (config: SessionConfig) => void
-}
-
-// --- DEFAULT FALLBACK CONFIGS ---
-const DEFAULT_BLOOM: BloomLevel[] = [
-  { k: 'Remember', c: '#e8b84a' },
-  { k: 'Understand', c: '#8fb996' },
-  { k: 'Apply', c: '#3f8f7a' },
-  { k: 'Analyze', c: '#d8452a' },
-]
-
-const EMPTY_SUBJECT: Subject = {
-  id: '__no-subject__',
-  code: '—',
-  name: 'No subjects available',
-  assigned: false,
-  topics: [
-    {
-      id: '__no-topic__',
-      name: 'No topics available',
-      banks: [
-        {
-          id: '__no-bank__',
-          name: 'No question bank available',
-          rubric: '',
-          criteria: 0,
-          scale: '—',
-          bloom: [0, 0, 0, 0],
-          status: 'pending',
-          updated: '—',
-        },
-      ],
-    },
-  ],
-}
-
-const STEPS = [
-  { title: 'Input data', group: 'Group 1' },
-  { title: 'Interview rules', group: 'Group 3' },
-  { title: 'AI & access', group: 'Group 7' },
-]
-
-const LANGS = [
-  { v: 'vi' as const, label: 'Vietnamese', sub: 'vi-VN' },
-  { v: 'en' as const, label: 'English', sub: 'en-US' },
-]
-
-// --- HELPER COMPONENTS ---
-function Section({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-t border-border pt-6 pb-10">
-      <div className="mb-6 flex items-baseline gap-4">
-        <span className="font-mono text-3xl font-bold text-primary sm:text-4xl">{n}</span>
-        <div>
-          <h2 className="text-xl font-semibold text-foreground sm:text-2xl">{title}</h2>
-        </div>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-2">
-      <span className="text-sm font-semibold text-foreground">{children}</span>
-    </div>
-  )
-}
-
-function BloomBar({ bloom, bloomLevels = DEFAULT_BLOOM, height = 8 }: { bloom: number[]; bloomLevels?: BloomLevel[]; height?: number }) {
-  const safeBloom = bloom || []
-  const total = safeBloom.reduce((a, b) => a + b, 0) || 1
-  return (
-    <div className="flex w-full overflow-hidden rounded-full bg-muted" style={{ height }}>
-      {safeBloom.map((v, i) => (
-        <div
-          key={i}
-          style={{ width: `${(v / total) * 100}%`, background: bloomLevels[i]?.c || '#94a3b8' }}
-          title={`${bloomLevels[i]?.k || 'Level ' + (i + 1)}: ${v}`}
-        />
-      ))}
-    </div>
-  )
-}
-
-function NumberInput({ value, onChange, min, max, unit, label }: { value: number; onChange: (v: number) => void; min: number; max: number; unit: string; label: string }) {
-  const [draft, setDraft] = useState(String(value))
-
-  return (
-    <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2">
-      <input
-        type="text"
-        inputMode="numeric"
-        value={draft}
-        aria-label={label}
-        onChange={(e) => {
-          const nextDraft = e.target.value
-          if (!/^\d*$/.test(nextDraft)) return
-          setDraft(nextDraft)
-
-          if (nextDraft !== '') {
-            const nextValue = Number(nextDraft)
-            if (nextValue >= min && nextValue <= max) onChange(nextValue)
-          }
-        }}
-        onBlur={() => {
-          const parsed = Number(draft)
-          const nextValue = Number.isFinite(parsed) && draft !== ''
-            ? Math.min(max, Math.max(min, parsed))
-            : min
-          setDraft(String(nextValue))
-          onChange(nextValue)
-        }}
-        className="w-16 appearance-none bg-transparent text-center font-mono text-2xl font-medium tabular-nums text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      />
-      <span className="text-xs text-muted-foreground">{unit}</span>
-    </div>
-  )
-}
-
-function Seg<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { v: T; label: string; sub: string }[] }) {
-  return (
-    <div role="radiogroup" className="grid grid-cols-2 gap-2">
-      {options.map((o) => {
-        const on = o.v === value
-        return (
-          <button
-            key={o.v}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => onChange(o.v)}
-            className={`rounded-md border px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-ring ${
-              on
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border bg-card hover:border-foreground/50 text-foreground'
-            }`}
-          >
-            <span className="flex items-center justify-between text-sm font-semibold">
-              {o.label}
-              <span className={`size-3 rounded-full border ${on ? 'border-primary-foreground bg-primary-foreground' : 'border-muted-foreground'}`} />
-            </span>
-            <span className={`font-mono text-[11px] ${on ? 'opacity-80' : 'text-muted-foreground'}`}>{o.sub}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-const selectCls =
-  'w-full appearance-none rounded-md border border-border bg-card px-4 py-3 pr-10 text-[15px] font-medium transition text-foreground focus-visible:outline-2 focus-visible:outline-ring'
-
-// --- MAIN COMPONENT ---
-export default function TeacherTests({
-  subjects = [],
-  bloomLevels = DEFAULT_BLOOM,
-  onStartSession,
-  onFinishSetup,
-}: TeacherTestsProps) {
-  const hasSubjectData = subjects.length > 0
-  const availableSubjects = hasSubjectData ? subjects : [EMPTY_SUBJECT]
-  const [subjectId, setSubjectId] = useState<string>(availableSubjects[0]?.id || '')
-  const [topicId, setTopicId] = useState<string>(availableSubjects[0]?.topics?.[0]?.id || '')
-  const [bankId, setBankId] = useState<string>(availableSubjects[0]?.topics?.[0]?.banks?.[0]?.id || '')
-
-  const [minutes, setMinutes] = useState(2)
-  const [followUps, setFollowUps] = useState(2)
-  const [stt, setStt] = useState<'vi' | 'en'>('vi')
-  const [tts, setTts] = useState<'vi' | 'en'>('vi')
-
-  const [phase, setPhase] = useState<'idle' | 'launching' | 'live'>('idle')
-  const [step, setStep] = useState(0)
-  const [finished, setFinished] = useState(false)
-
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
-
-  const clearExistingTimer = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
+  async function reload() {
+    const [nextSubjects, nextRubrics, nextQuestions] = await Promise.all([
+      api<Subject[]>("/api/teaching/subjects", { auth: true }),
+      api<TeachingRubric[]>("/api/teaching/rubrics", { auth: true }),
+      api<Question[]>("/api/teaching/questions", { auth: true }),
+    ]);
+    setSubjects(nextSubjects);
+    setRubrics(nextRubrics);
+    setQuestions(nextQuestions);
+    setSubjectId((current) => current || nextSubjects[0]?.id || "");
+    setRubricId((current) =>
+      resolveRubricIdForSubject(nextRubrics, subjectId || nextSubjects[0]?.id || "", current),
+    );
   }
 
   useEffect(() => {
-    return () => clearExistingTimer()
-  }, [])
+    let cancelled = false;
+    Promise.all([
+      api<Subject[]>("/api/teaching/subjects", { auth: true }),
+      api<TeachingRubric[]>("/api/teaching/rubrics", { auth: true }),
+      api<Question[]>("/api/teaching/questions", { auth: true }),
+    ])
+      .then(([nextSubjects, nextRubrics, nextQuestions]) => {
+        if (cancelled) return;
+        setSubjects(nextSubjects);
+        setRubrics(nextRubrics);
+        setQuestions(nextQuestions);
+        const fromUrl = searchParams.get("subjectId");
+        const validFromUrl =
+          fromUrl && nextSubjects.some((subject) => subject.id === fromUrl) ? fromUrl : null;
+        setSubjectId((current) => current || validFromUrl || nextSubjects[0]?.id || "");
+        setRubricId((current) =>
+          resolveRubricIdForSubject(
+            nextRubrics,
+            validFromUrl || nextSubjects[0]?.id || "",
+            current,
+          ),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [t, searchParams]);
 
-  const subject = availableSubjects.find((s) => s.id === subjectId) || availableSubjects[0]
-  const topic = subject?.topics?.find((t) => t.id === topicId) || subject?.topics?.[0]
-  const bank = topic?.banks?.find((b) => b.id === bankId) || topic?.banks?.[0]
-  const total = bank ? (bank.bloom ?? []).reduce((a, b) => a + b, 0) : 0
+  useEffect(() => {
+    if (loading || typeof window === "undefined") return;
+    if (window.location.hash !== "#draft-from-ai") return;
+    document.getElementById("draft-from-ai")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loading]);
 
-  const allowed = Boolean(hasSubjectData && subject?.assigned && bank?.status === 'approved' && bank.rubric)
+  const subjectRubrics = useMemo(
+    () => rubricsForSubject(rubrics, subjectId),
+    [rubrics, subjectId],
+  );
+  const effectiveRubricId = resolveRubricIdForSubject(rubrics, subjectId, rubricId) ?? "";
+  const effectiveMaterialCount = subjectId ? materialCount : null;
 
-  function go(n: number) {
-    if (n < 0 || n >= STEPS.length || n === step) return
-    clearExistingTimer()
-    setStep(n)
-    setPhase('idle')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  useEffect(() => {
+    if (!subjectId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const docs = await api<{ id: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, {
+          auth: true,
+        });
+        if (!cancelled) setMaterialCount(docs.length);
+      } catch {
+        if (!cancelled) setMaterialCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [subjectId]);
+
+  const forSubject = useMemo(
+    () => questions.filter((question) => !subjectId || question.subjectId === subjectId),
+    [questions, subjectId],
+  );
+  const pending = forSubject.filter((question) => question.status === "PENDING_REVIEW");
+  const approved = forSubject.filter((question) => question.status === "APPROVED");
+
+  function toggle(id: string) {
+    setSelected((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
   }
 
-  function finish() {
-    clearExistingTimer()
-    setFinished(true)
-    setPhase('idle')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-    if (hasSubjectData && onFinishSetup && subject && topic && bank) {
-      onFinishSetup({ subject, topic, bank, minutes, followUps, stt, tts })
+  async function onGenerate() {
+    setGenerateError(null);
+    if (!subjectId) {
+      const message = t("teacher.tests.chooseSubjectRubric");
+      setGenerateError(message);
+      toast.error(message);
+      return;
+    }
+    if (subjectRubrics.length === 0) {
+      const message = t("teacher.tests.noRubricForSubject");
+      setGenerateError(message);
+      toast.error(message);
+      return;
+    }
+    const activeRubricId = effectiveRubricId;
+    if (!activeRubricId) {
+      const message = t("teacher.tests.chooseSubjectRubric");
+      setGenerateError(message);
+      toast.error(message);
+      return;
+    }
+    if (effectiveMaterialCount === 0) {
+      const message = t("teacher.tests.noMaterialForSubject");
+      setGenerateError(message);
+      toast.error(message);
+      return;
+    }
+    const boundedCount = Math.min(10, Math.max(1, Number(count) || 1));
+    if (boundedCount !== count) setCount(boundedCount);
+    if (!topic.trim()) {
+      const message = t("teacher.common.topic");
+      setGenerateError(message);
+      toast.error(message);
+      return;
+    }
+    setGenerating(true);
+    try {
+      const created = await api<Question[]>("/api/teaching/questions/generate", {
+        method: "POST",
+        auth: true,
+        body: {
+          subjectId,
+          rubricId: activeRubricId,
+          topic: topic.trim(),
+          bloom,
+          count: boundedCount,
+        },
+      });
+      toast.success(t("teacher.tests.draftsReady", { count: String(created.length) }));
+      await reload();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : t("teacher.tests.loadError");
+      setGenerateError(message);
+      toast.error(message);
+    } finally {
+      setGenerating(false);
     }
   }
 
-  function pickSubject(id: string) {
-    const s = availableSubjects.find((x) => x.id === id)
-    if (!s) return
-    clearExistingTimer()
-    setSubjectId(id)
-
-    const firstTopic = s.topics?.[0]
-    const firstBank = firstTopic?.banks?.[0]
-
-    setTopicId(firstTopic?.id || '')
-    setBankId(firstBank?.id || '')
-    setPhase('idle')
-  }
-
-  function pickTopic(id: string) {
-    if (!subject) return
-    const t = subject.topics.find((x) => x.id === id)
-    if (!t) return
-    clearExistingTimer()
-    setTopicId(id)
-
-    const firstBank = t.banks?.[0]
-    setBankId(firstBank?.id || '')
-    setPhase('idle')
-  }
-
-  function start() {
-    if (!hasSubjectData || !allowed || phase !== 'idle') return
-    setPhase('launching')
-    clearExistingTimer()
-    timerRef.current = setTimeout(() => {
-      setPhase('live')
-      if (onStartSession && subject && topic && bank) {
-        onStartSession({ subject, topic, bank, minutes, followUps, stt, tts })
+  async function review(question: Question, status: string) {
+    const nextPrompt = edits[question.id] ?? question.prompt;
+    try {
+      const updated = await api<Question>(`/api/teaching/questions/${question.id}`, {
+        method: "PATCH",
+        auth: true,
+        body: { prompt: nextPrompt, bloom: question.bloom, status },
+      });
+      setQuestions((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setEdits((current) => {
+        const next = { ...current };
+        delete next[question.id];
+        return next;
+      });
+      if (status === "APPROVED") {
+        setSelected((current) => (current.includes(updated.id) ? current : [...current, updated.id]));
       }
-    }, 1200)
+      return true;
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
+      return false;
+    }
   }
 
-  const maxDuration = total * minutes * (1 + followUps)
-  const langName = (l: 'vi' | 'en') => (l === 'vi' ? 'Vietnamese' : 'English')
+  async function confirmReject() {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    const ok = await review(rejectTarget, "REJECTED");
+    setRejecting(false);
+    if (ok) setRejectTarget(null);
+  }
+
+  async function onStart(event: FormEvent) {
+    event.preventDefault();
+    if (selected.length === 0) {
+      toast.error(t("teacher.tests.selectQuestion"));
+      return;
+    }
+    setStarting(true);
+    try {
+      await api("/api/teaching/exams", {
+        method: "POST",
+        auth: true,
+        body: { title, format, subjectId, questionIds: selected },
+      });
+      setTitle("");
+      setSelected([]);
+      toast.success(t("teacher.tests.sessionStarted"));
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2Icon className="size-6 animate-spin text-muted-foreground" aria-label={t("teacher.common.loading")} />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          {finished ? (
-            <div key="summary" className="relative mx-auto max-w-4xl overflow-hidden rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lg sm:p-8">
-              <div className="relative flex items-center">
-                <button
-                  type="button"
-                  onClick={() => { clearExistingTimer(); setFinished(false); setPhase('idle') }}
-                  className="text-sm text-primary underline underline-offset-4 transition hover:opacity-80"
-                >
-                  ← Back to setup
-                </button>
-              </div>
+    <div className="space-y-6">
+      <TeacherPageHeader
+        eyebrow={t("teacher.tests.eyebrow")}
+        title={t("teacher.tests.title")}
+        description={t("teacher.tests.lead")}
+        breadcrumbs={[
+          { href: "/teacher", label: t("nav.teacher.overview") },
+          { label: t("nav.teacher.exams") },
+        ]}
+      />
 
-              <div className="relative mt-8 grid grid-cols-3 gap-3 sm:gap-4">
-                {[
-                  [String(total), 'questions'],
-                  [`${minutes}`, 'min / answer'],
-                  [followUps ? `≤${followUps}` : '0', 'follow-ups'],
-                ].map(([v, l]) => (
-                  <div key={l}>
-                    <p className="font-mono text-5xl font-bold leading-none sm:text-6xl text-foreground">{v}</p>
-                    <p className="mt-2 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">{l}</p>
-                  </div>
+      <Card id="draft-from-ai">
+        <CardHeader className="border-b">
+          <CardTitle className="font-serif text-2xl">{t("teacher.tests.draftTitle")}</CardTitle>
+          <CardDescription>{t("teacher.tests.draftDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-6">
+          {generateError ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+              {generateError}
+            </p>
+          ) : null}
+          {effectiveMaterialCount === 0 && subjectId ? (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+              {t("teacher.tests.noMaterialForSubject")}{" "}
+              <Link href="/teacher/bank" className="font-medium underline underline-offset-2">
+                {t("teacher.tests.importMaterialLink")}
+              </Link>
+            </p>
+          ) : null}
+          {subjectId && subjectRubrics.length === 0 ? (
+            <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground" role="status">
+              {t("teacher.tests.noRubricForSubject")}
+            </p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">{t("teacher.tests.generateHint")}</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="draft-subject">{t("teacher.common.subject")}</FieldLabel>
+              <select
+                id="draft-subject"
+                className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                value={subjectId}
+                onChange={(event) => {
+                  const nextSubjectId = event.target.value;
+                  setSubjectId(nextSubjectId);
+                  setSelected([]);
+                  setRubricId((current) => resolveRubricIdForSubject(rubrics, nextSubjectId, current));
+                }}
+              >
+                {subjects.length === 0 ? (
+                  <option value="">{t("teacher.tests.noSubjects")}</option>
+                ) : null}
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.code} — {subject.name}
+                  </option>
                 ))}
-              </div>
-
-              <dl className="relative mt-8 grid gap-x-8 border-t border-border sm:grid-cols-2">
-                {[
-                  ['Subject', hasSubjectData && subject ? `${subject.code} · ${subject.name}` : 'Not selected'],
-                  ['Topic', hasSubjectData ? topic?.name || '—' : 'Not selected'],
-                  ['Question bank', hasSubjectData ? bank?.name || '—' : 'Not selected'],
-                  ['Rubric', hasSubjectData && bank ? `${bank.rubric || '—'} · ${bank.criteria} criteria` : 'Not selected'],
-                  ['STT / TTS', `${langName(stt)} / ${langName(tts)}`],
-                  ['Est. per candidate', total > 0 ? `~${maxDuration} min max` : '—'],
-                ].map(([k, v]) => (
-                  <div key={k} className="border-b border-border py-4">
-                    <dt className="font-mono text-[11px] tracking-wider text-muted-foreground uppercase">{k}</dt>
-                    <dd className="mt-1 text-[15px] leading-snug font-semibold text-foreground">{v}</dd>
-                    {k === 'Est. per candidate' && total > 0 && (
-                      <dd className="mt-1 text-xs text-muted-foreground">
-                        {total} questions × {minutes} min × {followUps + 1} responses max
-                      </dd>
-                    )}
-                  </div>
+              </select>
+            </Field>
+            <Field>
+              <RubricFieldLabel
+                htmlFor="draft-rubric"
+                subjectId={subjectId}
+                rubricId={effectiveRubricId}
+                label={t("teacher.common.rubric")}
+                hint={t("teacher.rubrics.editLink")}
+                returnTo="/teacher/tests"
+              />
+              <select
+                id="draft-rubric"
+                className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                value={effectiveRubricId}
+                onChange={(event) => setRubricId(event.target.value)}
+              >
+                {subjectRubrics.length === 0 ? (
+                  <option value="">{t("teacher.tests.noRubricForSubject")}</option>
+                ) : null}
+                {subjectRubrics.map((rubric) => (
+                  <option key={rubric.id} value={rubric.id}>
+                    {rubric.name}
+                  </option>
                 ))}
-              </dl>
+              </select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="draft-topic">{t("teacher.common.topic")}</FieldLabel>
+              <Input id="draft-topic" value={topic} onChange={(event) => setTopic(event.target.value)} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="draft-bloom">{t("teacher.common.bloom")}</FieldLabel>
+              <select
+                id="draft-bloom"
+                className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                value={bloom}
+                onChange={(event) => setBloom(event.target.value as (typeof BLOOM)[number])}
+              >
+                {BLOOM.map((level) => (
+                  <option key={level} value={level}>
+                    {formatBloom(level, locale)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <Button
+              type="button"
+              onClick={() => void onGenerate()}
+              disabled={
+                generating ||
+                !subjectId ||
+                subjectRubrics.length === 0 ||
+                effectiveMaterialCount !== null && effectiveMaterialCount === 0
+              }
+            >
+              {generating
+                ? t("teacher.tests.drafting")
+                : t("teacher.tests.draftButton", { count: String(count) })}
+            </Button>
+            <Field>
+              <FieldLabel htmlFor="draft-count">{t("teacher.tests.draftCount")}</FieldLabel>
+              <Input
+                id="draft-count"
+                className="w-24"
+                type="number"
+                min={1}
+                max={10}
+                value={count}
+                onChange={(event) => setCount(Number(event.target.value))}
+              />
+            </Field>
+          </div>
 
-              {hasSubjectData && bank && (
-                <div className="relative mt-8">
-                  <p className="mb-3 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">Bloom distribution</p>
-                  <BloomBar bloom={bank.bloom} bloomLevels={bloomLevels} height={12} />
-                  <div className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-4">
-                    {bloomLevels.map((b, i) => (
-                      <span key={b.k} className="flex items-center gap-2 text-muted-foreground">
-                        <i className="size-2.5 rounded-full" style={{ background: b.c }} />
-                        {b.k}
-                        <b className="ml-auto font-mono font-medium text-foreground">{bank.bloom?.[i] ?? 0}</b>
-                      </span>
-                    ))}
+          {pending.length > 0 ? (
+            <ul className="divide-y rounded-xl border">
+              {pending.map((question) => (
+                <li key={question.id} className="space-y-2 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      label={formatQuestionStatus(question.status, labels.questionStatus)}
+                      variant={questionStatusVariant(question.status)}
+                    />
+                    <StatusBadge label={formatBloom(question.bloom, locale)} variant="info" />
+                    <span className="text-xs text-muted-foreground">{question.topic}</span>
                   </div>
-                </div>
-              )}
-
-              <div className="relative mt-10">
-                {phase === 'live' ? (
-                  <button
-                    type="button"
-                    onClick={() => { clearExistingTimer(); setPhase('idle') }}
-                    className="mx-auto flex w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-destructive px-6 py-4 text-lg font-semibold text-destructive-foreground transition hover:opacity-90"
-                  >
-                    <span className="text-sm">■</span> Stop
-                  </button>
-                ) : (
-                  <>
-                    <button
+                  <textarea
+                    aria-label={t("teacher.common.prompt")}
+                    value={edits[question.id] ?? question.prompt}
+                    onChange={(event) =>
+                      setEdits((current) => ({ ...current, [question.id]: event.target.value }))
+                    }
+                    className="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  />
+                  {(question.expectedAnswer || question.keyPoints) && (
+                    <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {t("teacher.common.gradingBasis")}
+                        {question.sourceRef ? ` · ${question.sourceRef}` : ""}
+                      </p>
+                      {question.expectedAnswer ? (
+                        <p className="mt-1">
+                          <span className="font-medium">{t("teacher.common.expectedAnswer")}: </span>
+                          {question.expectedAnswer}
+                        </p>
+                      ) : null}
+                      {question.keyPoints ? (
+                        <p className="mt-1 text-muted-foreground">
+                          <span className="font-medium text-foreground">{t("teacher.common.keyPoints")}: </span>
+                          {question.keyPoints}
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                  {!question.expectedAnswer && !question.keyPoints ? (
+                    <p className="text-xs text-muted-foreground">
+                      {question.sourceRef ?? question.source}
+                    </p>
+                  ) : null}
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={() => void review(question, "APPROVED")}>
+                      {t("teacher.common.approve")}
+                    </Button>
+                    <Button
                       type="button"
-                      disabled={!allowed || phase === 'launching'}
-                      onClick={start}
-                      className="group mx-auto flex w-full max-w-xs items-center justify-center gap-3 rounded-xl bg-primary px-6 py-4 text-center text-lg font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setRejectTarget(question)}
                     >
-                      <span>{phase === 'launching' ? 'Launching…' : 'Start'}</span>
-                      <span className="text-2xl transition group-enabled:group-hover:translate-x-1">{phase === 'launching' ? '◌' : '→'}</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* STEPS INDICATOR */}
-              <ol className="mb-6 grid grid-cols-3 gap-2 sm:mb-8 sm:gap-3">
-                {STEPS.map((s, i) => {
-                  const done = i < step
-                  const cur = i === step
-                  return (
-                    <li key={s.title}>
-                      <button
-                        type="button"
-                        disabled={i > step}
-                        onClick={() => go(i)}
-                        className="group block w-full text-left disabled:cursor-default"
-                      >
-                        <span className="block h-1 overflow-hidden rounded-full bg-muted">
-                          <span className={`block h-full bg-primary transition-all duration-500 ${done || cur ? 'w-full' : 'w-0'}`} />
-                        </span>
-                        <span className="mt-3 flex items-center gap-2.5">
-                          <span
-                            className={`grid size-6 shrink-0 place-items-center rounded-full font-mono text-[11px] transition-colors ${
-                              done
-                                ? 'bg-emerald-600 text-white'
-                                : cur
-                                ? 'bg-primary text-primary-foreground'
-                                : 'border border-border text-muted-foreground'
-                            }`}
-                          >
-                            {done ? '✓' : i + 1}
-                          </span>
-                          <span className="min-w-0">
-                            <span className={`block truncate text-sm font-semibold ${cur ? 'text-foreground' : 'text-muted-foreground'}`}>
-                              {s.title}
-                            </span>
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ol>
+                      {t("teacher.common.reject")}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </CardContent>
+      </Card>
 
-              <div>
-                {step === 0 && subject && (
-                  <Section n="01" title="Select input data">
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <div>
-                        <Label>Subject</Label>
-                        <div className="relative">
-                          <select className={selectCls} value={subject?.id || ''} onChange={(e) => pickSubject(e.target.value)}>
-                            {availableSubjects.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.code} · {s.name}{s.assigned ? '' : ' (not assigned)'}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-xs text-muted-foreground">▾</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label>Topic</Label>
-                        <div className="relative">
-                          <select className={selectCls} value={topic?.id || ''} onChange={(e) => pickTopic(e.target.value)}>
-                            {subject.topics?.map((t) => (
-                              <option key={t.id} value={t.id}>{t.name}</option>
-                            ))}
-                          </select>
-                          <span className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-xs text-muted-foreground">▾</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {topic && (
-                      <div className="mt-6">
-                        <Label>Question bank & rubric</Label>
-                        <div className="grid gap-3">
-                          {topic.banks?.map((b) => {
-                            const on = b.id === bank?.id
-                            const n = (b.bloom ?? []).reduce((a, c) => a + c, 0)
-                            return (
-                              <button
-                                key={b.id}
-                                type="button"
-                                onClick={() => { clearExistingTimer(); setBankId(b.id); setPhase('idle') }}
-                                className={`rounded-md border p-5 text-left transition ${
-                                  on
-                                    ? 'border-primary bg-card shadow-md'
-                                    : 'border-border bg-card/60 hover:border-foreground/50'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-4">
-                                  <div>
-                                    <p className="font-semibold text-foreground">{b.name}</p>
-                                    <p className="mt-1 font-mono text-[12px] text-muted-foreground">
-                                      {b.rubric} · {b.criteria} criteria · {b.scale}
-                                    </p>
-                                  </div>
-                                  <span
-                                    className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-[11px] ${
-                                      b.status === 'approved'
-                                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                        : 'bg-amber-500/10 text-amber-600'
-                                    }`}
-                                  >
-                                    {b.status === 'approved' ? '● Approved' : '○ Pending'}
-                                  </span>
-                                </div>
-                                <div className="mt-4 flex items-center gap-4">
-                                  <div className="flex-1">
-                                    <BloomBar bloom={b.bloom} bloomLevels={bloomLevels} />
-                                  </div>
-                                  <span className="font-mono text-xs text-muted-foreground">{n} questions</span>
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </div>
-                        {bank && (
-                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
-                            {bloomLevels.map((b, i) => (
-                              <span key={b.k} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <i className="size-2.5 rounded-full" style={{ background: b.c }} />
-                                {b.k} <b className="font-mono text-foreground">{bank.bloom?.[i] ?? 0}</b>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </Section>
-                )}
-
-                {step === 1 && (
-                  <Section n="02" title="Set interview rules">
-                    <div className="grid gap-8 sm:grid-cols-2">
-                      <div>
-                        <Label>Answer time limit</Label>
-                        <NumberInput value={minutes} onChange={setMinutes} min={1} max={120} unit="minutes" label="Answer time limit" />
-                      </div>
-                      <div>
-                        <Label>Adaptive follow-up</Label>
-                        <NumberInput value={followUps} onChange={setFollowUps} min={1} max={20} unit="per question" label="Adaptive follow-up" />
-                      </div>
-                    </div>
-                  </Section>
-                )}
-
-                {step === 2 && (
-                  <Section n="03" title="AI configuration">
-                    <div className="grid gap-8 sm:grid-cols-2">
-                      <div>
-                        <Label>STT language (Speech-to-Text)</Label>
-                        <Seg value={stt} onChange={setStt} options={LANGS} />
-                      </div>
-                      <div>
-                        <Label>TTS language (Text-to-Speech)</Label>
-                        <Seg value={tts} onChange={setTts} options={LANGS} />
-                      </div>
-                    </div>
-
-                  </Section>
-                )}
-              </div>
-
-              {/* FOOTER */}
-              <footer className="flex items-center justify-between gap-4 border-t border-border pt-6">
-                <button
-                  type="button"
-                  onClick={() => go(step - 1)}
-                  disabled={step === 0}
-                  className="rounded-md border border-border px-6 py-3 text-sm font-semibold transition hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-30"
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle className="font-serif text-2xl">{t("teacher.tests.sessionTitle")}</CardTitle>
+          <CardDescription>{t("teacher.tests.sessionDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <form key={subjectId} className="space-y-4" onSubmit={onStart}>
+            <Field>
+              <FieldLabel htmlFor="session-title">{t("teacher.tests.sessionName")}</FieldLabel>
+              <Input
+                id="session-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder={t("teacher.tests.sessionNamePlaceholder")}
+                required
+              />
+            </Field>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="session-subject">{t("teacher.common.subject")}</FieldLabel>
+                <select
+                  id="session-subject"
+                  className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                  value={subjectId}
+                  onChange={(event) => {
+                    const nextSubjectId = event.target.value;
+                    setSubjectId(nextSubjectId);
+                    setSelected([]);
+                    setRubricId((current) => resolveRubricIdForSubject(rubrics, nextSubjectId, current));
+                  }}
                 >
-                  ← Back
-                </button>
-                <span className="font-mono text-xs text-muted-foreground">
-                  Step {step + 1} / {STEPS.length}
-                </span>
-                {step < STEPS.length - 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => go(step + 1)}
-                    className="group rounded-md bg-primary px-7 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
-                  >
-                    Next <span className="inline-block transition group-hover:translate-x-1">→</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={finish}
-                    className="group rounded-md bg-primary px-7 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
-                  >
-                    Finish <span className="inline-block transition group-hover:translate-x-1">→</span>
-                  </button>
-                )}
-              </footer>
-            </>
-          )}
-      </main>
-    </div>
-  )
-}
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.code} — {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="session-format">Format</FieldLabel>
+                <select
+                  id="session-format"
+                  className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+                  value={format}
+                  onChange={(event) => setFormat(event.target.value)}
+                >
+                  <option value="ORAL">{formatExamFormat("ORAL", labels.examFormat)}</option>
+                  <option value="MULTIPLE_CHOICE">
+                    {formatExamFormat("MULTIPLE_CHOICE", labels.examFormat)}
+                  </option>
+                </select>
+              </Field>
+            </div>
+            <ul className="space-y-2">
+              {approved.length === 0 ? (
+                <li className="text-sm text-muted-foreground">{t("teacher.tests.noApproved")}</li>
+              ) : (
+                approved.map((question) => (
+                  <li key={question.id}>
+                    <label className="flex items-start gap-2 rounded-lg border p-3 text-sm hover:bg-muted/40">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={selected.includes(question.id)}
+                        onChange={() => toggle(question.id)}
+                      />
+                      <span>
+                        <StatusBadge
+                          label={formatBloom(question.bloom, locale)}
+                          variant="info"
+                          className="mb-1"
+                        />
+                        <br />
+                        {question.prompt}
+                      </span>
+                    </label>
+                  </li>
+                ))
+              )}
+            </ul>
+            <Button type="submit" disabled={!subjectId || selected.length === 0 || starting}>
+              {starting ? t("teacher.common.loading") : t("teacher.tests.startTest")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-export { TeacherTests }
+      <ConfirmDialog
+        open={rejectTarget != null}
+        title={t("teacher.common.rejectConfirmTitle")}
+        description={t("teacher.common.rejectConfirmDesc")}
+        confirmLabel={t("teacher.common.rejectConfirmAction")}
+        cancelLabel={t("teacher.common.cancel")}
+        destructive
+        confirming={rejecting}
+        onCancel={() => {
+          if (!rejecting) setRejectTarget(null);
+        }}
+        onConfirm={() => void confirmReject()}
+      />
+    </div>
+  );
+}

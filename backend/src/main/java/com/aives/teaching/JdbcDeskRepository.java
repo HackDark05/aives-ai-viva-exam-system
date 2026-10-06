@@ -2,6 +2,8 @@ package com.aives.teaching;
 
 import com.aives.teaching.DeskRecords.AttemptItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
+import com.aives.teaching.DeskRecords.RubricCriterionItem;
+import com.aives.teaching.DeskRecords.RubricDetailItem;
 import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SessionItem;
 import com.aives.teaching.DeskRecords.SpeechSettings;
@@ -31,7 +33,7 @@ public class JdbcDeskRepository {
     private static final String QUESTION_SELECT = """
             SELECT q.id::text, q.course_id::text, c.name, q.topic, q.prompt, q.bloom_level,
                    q.rubric_id::text, r.name, %s, %s, q.status, q.source, u.full_name,
-                   q.source_ref
+                   q.source_ref, q.expected_answer, q.key_points
             FROM question q
             JOIN course c ON c.id = q.course_id
             JOIN rubric r ON r.id = q.rubric_id
@@ -142,6 +144,97 @@ public class JdbcDeskRepository {
         return count != null && count > 0;
     }
 
+    public boolean teacherOwnsRubric(String teacherId, String rubricId) {
+        Integer count = jdbc.queryForObject(
+                """
+                SELECT count(*) FROM rubric r
+                JOIN course_assignment ca ON ca.course_id = r.course_id AND ca.teacher_id = ?::uuid
+                WHERE r.id = ?::uuid
+                """,
+                Integer.class,
+                teacherId,
+                rubricId
+        );
+        return count != null && count > 0;
+    }
+
+    public RubricDetailItem rubricDetail(String rubricId) {
+        var header = jdbc.query(
+                """
+                SELECT r.id::text, r.name, COALESCE(r.description, ''), c.id::text, c.code, c.name
+                FROM rubric r
+                JOIN course c ON c.id = r.course_id
+                WHERE r.id = ?::uuid
+                """,
+                (rs, row) -> new Object[] {
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getString(4),
+                        rs.getString(5),
+                        rs.getString(6),
+                },
+                rubricId
+        );
+        if (header.isEmpty()) {
+            return null;
+        }
+        Object[] values = header.getFirst();
+        List<RubricCriterionItem> criteria = jdbc.query(
+                """
+                SELECT id::text, name, COALESCE(description, ''), max_points, sort_order
+                FROM rubric_criterion
+                WHERE rubric_id = ?::uuid
+                ORDER BY sort_order, name
+                """,
+                (rs, row) -> new RubricCriterionItem(
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getDouble(4),
+                        rs.getInt(5)
+                ),
+                rubricId
+        );
+        int maxScore = criteria.stream().mapToInt(c -> (int) Math.round(c.maxPoints())).sum();
+        return new RubricDetailItem(
+                (String) values[0],
+                (String) values[1],
+                (String) values[2],
+                (String) values[3],
+                (String) values[4],
+                (String) values[5],
+                criteria,
+                maxScore
+        );
+    }
+
+    @Transactional
+    public void updateRubric(String rubricId, String name, String description, List<RubricCriterionItem> criteria) {
+        jdbc.update(
+                "UPDATE rubric SET name = ?, description = ? WHERE id = ?::uuid",
+                name.trim(),
+                description == null ? "" : description.trim(),
+                rubricId
+        );
+        jdbc.update("DELETE FROM rubric_criterion WHERE rubric_id = ?::uuid", rubricId);
+        int order = 0;
+        for (RubricCriterionItem criterion : criteria) {
+            jdbc.update(
+                    """
+                    INSERT INTO rubric_criterion (id, rubric_id, name, description, max_points, sort_order)
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?, ?)
+                    """,
+                    criterion.id(),
+                    rubricId,
+                    criterion.name().trim(),
+                    criterion.description() == null ? "" : criterion.description().trim(),
+                    criterion.maxPoints(),
+                    order++
+            );
+        }
+    }
+
     public List<QuestionItem> questions(String status) {
         if (status == null || status.isBlank()) {
             return jdbc.query(QUESTION_SELECT + " ORDER BY q.created_at DESC", questionMapper());
@@ -160,14 +253,16 @@ public class JdbcDeskRepository {
             String source,
             String authorId,
             String sourceRef,
-            String generationId
+            String generationId,
+            String expectedAnswer,
+            String keyPoints
     ) {
         jdbc.update(
                 """
                 INSERT INTO question
                     (id, course_id, topic, prompt, bloom_level, rubric_id, status, source, author_id,
-                     source_ref, generation_id)
-                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::uuid, ?, ?, ?::uuid, ?, ?::uuid)
+                     source_ref, generation_id, expected_answer, key_points)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::uuid, ?, ?, ?::uuid, ?, ?::uuid, ?, ?)
                 """,
                 id.toString(),
                 subjectId,
@@ -179,7 +274,9 @@ public class JdbcDeskRepository {
                 source,
                 authorId,
                 sourceRef,
-                generationId
+                generationId,
+                expectedAnswer,
+                keyPoints
         );
     }
 
@@ -208,20 +305,39 @@ public class JdbcDeskRepository {
         );
     }
 
-    public void updateQuestion(String id, String prompt, String bloom, String status, String reviewerId) {
+    public void updateQuestion(
+            String id,
+            String topic,
+            String prompt,
+            String bloom,
+            String status,
+            String reviewerId,
+            String expectedAnswer,
+            String keyPoints
+    ) {
         jdbc.update(
                 """
                 UPDATE question
-                SET prompt = ?, bloom_level = ?, status = ?, reviewed_by = ?::uuid, reviewed_at = now(),
-                    updated_at = now()
+                SET topic = ?, prompt = ?, bloom_level = ?, status = ?, reviewed_by = ?::uuid, reviewed_at = now(),
+                    expected_answer = ?, key_points = ?, updated_at = now()
                 WHERE id = ?::uuid
                 """,
+                topic,
                 prompt,
                 bloom,
                 status,
                 reviewerId,
+                expectedAnswer,
+                keyPoints,
                 id
         );
+    }
+
+    public void deleteQuestion(String id) {
+        jdbc.update("DELETE FROM question_source_chunk WHERE question_id = ?::uuid", id);
+        jdbc.update("DELETE FROM exam_session_question WHERE question_id = ?::uuid", id);
+        jdbc.update("UPDATE question_turn SET question_id = NULL WHERE question_id = ?::uuid", id);
+        jdbc.update("DELETE FROM question WHERE id = ?::uuid", id);
     }
 
     public QuestionItem question(String id) {
@@ -423,7 +539,9 @@ public class JdbcDeskRepository {
                 rs.getString(11),
                 rs.getString(12),
                 rs.getString(13),
-                rs.getString(14)
+                rs.getString(14),
+                rs.getString(15),
+                rs.getString(16)
         );
     }
 

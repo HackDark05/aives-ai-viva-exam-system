@@ -13,6 +13,27 @@ public final class DeskRecords {
     public record RubricItem(String id, String name, String criteria, int maxScore, String subjectId) {
     }
 
+    public record RubricCriterionItem(
+            String id,
+            String name,
+            String description,
+            double maxPoints,
+            int sortOrder
+    ) {
+    }
+
+    public record RubricDetailItem(
+            String id,
+            String name,
+            String description,
+            String subjectId,
+            String subjectCode,
+            String subjectName,
+            List<RubricCriterionItem> criteria,
+            int maxScore
+    ) {
+    }
+
     public record QuestionItem(
             String id,
             String subjectId,
@@ -27,7 +48,21 @@ public final class DeskRecords {
             String status,
             String source,
             String authorName,
-            String sourceRef
+            String sourceRef,
+            String expectedAnswer,
+            String keyPoints
+    ) {
+    }
+
+    /** Question payload for students sitting an exam — no model answers. */
+    public record ExamQuestionItem(
+            String id,
+            String topic,
+            String prompt,
+            String bloom,
+            String rubricName,
+            String criteria,
+            int maxScore
     ) {
     }
 
