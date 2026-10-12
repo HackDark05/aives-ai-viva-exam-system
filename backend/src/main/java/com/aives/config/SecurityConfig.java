@@ -62,6 +62,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/users/*/role").hasRole("ADMIN")
+                        .requestMatchers("/api/students", "/api/students/**").hasRole("ADMIN")
                         .requestMatchers("/api/teaching/**").hasRole("EXAMINER")
                         .requestMatchers("/api/student/**").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/knowledge").hasAnyRole("EXAMINER", "ADMIN")
@@ -73,7 +74,7 @@ public class SecurityConfig {
     private static CorsConfigurationSource corsConfiguration(AppProperties properties) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(java.util.List.of(properties.frontendUrl()));
-        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PATCH", "OPTIONS"));
+        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(java.util.List.of("*"));
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

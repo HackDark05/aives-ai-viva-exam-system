@@ -2,7 +2,11 @@ package com.aives.teaching;
 
 import com.aives.rag.DocumentIngestionService.IngestedDocument;
 import com.aives.teaching.DeskRecords.AttemptItem;
+import com.aives.teaching.DeskRecords.ExamDetailItem;
+import com.aives.teaching.DeskRecords.ExamListItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
+import com.aives.teaching.DeskRecords.RubricCriterionItem;
+import com.aives.teaching.DeskRecords.RubricDetailItem;
 import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SubjectItem;
 import com.aives.user.PublicUser;
@@ -11,16 +15,21 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -39,9 +48,34 @@ public class TeachingController {
         return teaching.mySubjects(teacher);
     }
 
+    @PostMapping("/subjects")
+    public SubjectItem createSubject(
+            @AuthenticationPrincipal PublicUser teacher,
+            @Valid @RequestBody SubjectRequest request
+    ) {
+        return teaching.createSubject(teacher, request.code(), request.name());
+    }
+
     @GetMapping("/rubrics")
-    public List<RubricItem> rubrics() {
-        return teaching.rubrics();
+    public List<RubricItem> rubrics(@AuthenticationPrincipal PublicUser teacher) {
+        return teaching.rubrics(teacher);
+    }
+
+    @GetMapping("/rubrics/{id}")
+    public RubricDetailItem rubric(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        return teaching.rubric(teacher, id);
+    }
+
+    @PutMapping("/rubrics/{id}")
+    public RubricDetailItem updateRubric(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id,
+            @Valid @RequestBody UpdateRubricRequest request
+    ) {
+        return teaching.updateRubric(teacher, id, request.name(), request.description(), request.criteria());
     }
 
     @GetMapping("/documents")
@@ -61,9 +95,35 @@ public class TeachingController {
         return teaching.upload(teacher, subjectId, file);
     }
 
+    @DeleteMapping("/documents/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteDocument(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        teaching.deleteDocument(teacher, id);
+    }
+
+    @PostMapping("/rubrics")
+    public RubricDetailItem createRubric(
+            @AuthenticationPrincipal PublicUser teacher,
+            @Valid @RequestBody CreateRubricRequest request
+    ) {
+        return teaching.createRubric(
+                teacher,
+                request.subjectId(),
+                request.name(),
+                request.description(),
+                request.criteria()
+        );
+    }
+
     @GetMapping("/questions")
-    public List<QuestionItem> questions(@RequestParam(required = false) String status) {
-        return teaching.questions(status);
+    public List<QuestionItem> questions(
+            @AuthenticationPrincipal PublicUser teacher,
+            @RequestParam(required = false) String status
+    ) {
+        return teaching.questions(teacher, status);
     }
 
     @PostMapping("/questions")
@@ -112,13 +172,78 @@ public class TeachingController {
     }
 
     @PatchMapping("/questions/{id}")
-    public QuestionItem review(@PathVariable String id, @Valid @RequestBody ReviewRequest request) {
-        return teaching.review(id, request.prompt(), request.bloom(), request.status());
+    public QuestionItem review(
+            @AuthenticationPrincipal PublicUser reviewer,
+            @PathVariable String id,
+            @Valid @RequestBody ReviewRequest request
+    ) {
+        return teaching.review(
+                reviewer,
+                id,
+                request.prompt(),
+                request.bloom(),
+                request.status(),
+                request.topic(),
+                request.expectedAnswer(),
+                request.keyPoints()
+        );
+    }
+
+    @DeleteMapping("/questions/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteQuestion(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        teaching.deleteQuestion(teacher, id);
+    }
+
+    @GetMapping("/exams")
+    public List<ExamListItem> exams(@AuthenticationPrincipal PublicUser teacher) {
+        return teaching.exams(teacher);
+    }
+
+    @GetMapping("/exams/{id}")
+    public ExamDetailItem exam(@AuthenticationPrincipal PublicUser teacher, @PathVariable String id) {
+        return teaching.exam(teacher, id);
     }
 
     @PostMapping("/exams")
-    public void start(@AuthenticationPrincipal PublicUser teacher, @Valid @RequestBody StartExamRequest request) {
-        teaching.startExam(teacher, request.title(), request.format(), request.subjectId(), request.questionIds());
+    public ExamListItem start(@AuthenticationPrincipal PublicUser teacher, @Valid @RequestBody StartExamRequest request) {
+        return teaching.startExam(teacher, request.title(), request.format(), request.subjectId(), request.questionIds());
+    }
+
+    @PatchMapping("/exams/{id}")
+    public ExamListItem renameExam(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id,
+            @Valid @RequestBody RenameExamRequest request
+    ) {
+        return teaching.renameExam(teacher, id, request.title());
+    }
+
+    @PatchMapping("/exams/{id}/status")
+    public ExamListItem examStatus(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id,
+            @Valid @RequestBody ExamStatusRequest request
+    ) {
+        return teaching.setExamStatus(teacher, id, request.status());
+    }
+
+    @PutMapping("/exams/{id}/questions")
+    public ExamDetailItem examQuestions(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id,
+            @Valid @RequestBody ExamQuestionsRequest request
+    ) {
+        return teaching.replaceExamQuestions(teacher, id, request.questionIds());
+    }
+
+    @DeleteMapping("/exams/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteExam(@AuthenticationPrincipal PublicUser teacher, @PathVariable String id) {
+        teaching.deleteExam(teacher, id);
     }
 
     @GetMapping("/scores")
@@ -133,6 +258,9 @@ public class TeachingController {
             @Valid @RequestBody ScoreRequest request
     ) {
         teaching.score(teacher, id, request.score());
+    }
+
+    public record SubjectRequest(@NotBlank String code, @NotBlank String name) {
     }
 
     public record QuestionRequest(
@@ -162,7 +290,14 @@ public class TeachingController {
     ) {
     }
 
-    public record ReviewRequest(@NotBlank String prompt, @NotBlank String bloom, @NotBlank String status) {
+    public record ReviewRequest(
+            @NotBlank String prompt,
+            @NotBlank String bloom,
+            @NotBlank String status,
+            String topic,
+            String expectedAnswer,
+            String keyPoints
+    ) {
     }
 
     public record StartExamRequest(
@@ -174,5 +309,29 @@ public class TeachingController {
     }
 
     public record ScoreRequest(int score) {
+    }
+
+    public record UpdateRubricRequest(
+            @NotBlank String name,
+            String description,
+            @NotNull List<RubricCriterionItem> criteria
+    ) {
+    }
+
+    public record CreateRubricRequest(
+            @NotBlank String subjectId,
+            @NotBlank String name,
+            String description,
+            @NotNull List<RubricCriterionItem> criteria
+    ) {
+    }
+
+    public record RenameExamRequest(@NotBlank @Size(max = 255) String title) {
+    }
+
+    public record ExamStatusRequest(@NotBlank String status) {
+    }
+
+    public record ExamQuestionsRequest(@NotNull List<String> questionIds) {
     }
 }

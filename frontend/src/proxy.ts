@@ -12,8 +12,6 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const role = token ? decodeTokenClaims(token)?.role : undefined;
 
-  const role = token ? decodeTokenClaims(token)?.role : undefined;
-
   if (pathname === "/login" && isAuthed && role) {
     return NextResponse.redirect(new URL(homeForRole(role), request.url));
   }

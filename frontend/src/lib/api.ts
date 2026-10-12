@@ -17,9 +17,21 @@ type ApiOptions = Omit<RequestInit, "body"> & {
   auth?: boolean;
 };
 
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname.startsWith("/login")) return;
+  window.location.replace("/login");
+}
+
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { body, auth = false, headers, ...rest } = options;
   const token = auth ? getAccessToken() : null;
+
+  if (auth && !token) {
+    clearSession();
+    redirectToLogin();
+    throw new ApiError(401, "Missing access token");
+  }
 
   const response = await fetch(`${API_URL}${path}`, {
     ...rest,
@@ -37,20 +49,26 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     | null;
 
   if (!response.ok) {
+    const errorMessage =
+      payload !== null && typeof payload === "object" && "message" in payload
+        ? (payload as { message?: string | string[] }).message
+        : undefined;
+    const message = Array.isArray(errorMessage)
+      ? errorMessage[0]
+      : typeof errorMessage === "string"
+        ? errorMessage
+        : "Something went wrong";
+
     if (response.status === 401) {
       clearSession();
+      const sessionGone =
+        message === "Missing access token" ||
+        message === "Invalid or expired session" ||
+        message === "Account no longer exists";
+      if (sessionGone) {
+        redirectToLogin();
+      }
     }
-
-    const message = Array.isArray(
-      payload && "message" in payload ? payload.message : undefined,
-    )
-      ? (payload as { message: string[] }).message[0]
-      : payload &&
-          typeof payload === "object" &&
-          "message" in payload &&
-          typeof payload.message === "string"
-        ? payload.message
-        : "Something went wrong";
 
     throw new ApiError(response.status, message);
   }

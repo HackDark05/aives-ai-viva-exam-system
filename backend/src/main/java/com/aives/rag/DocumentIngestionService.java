@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -72,14 +73,17 @@ public class DocumentIngestionService {
         }
         jdbc.update(
                 """
-                INSERT INTO course_document (id, teacher_id, subject_id, original_name, content_type, storage_path)
-                VALUES (?::uuid, ?, ?::uuid, ?, ?, ?)
+                INSERT INTO course_document
+                    (id, course_id, uploaded_by, topic, original_name, content_type, size_bytes, storage_path, extraction_status)
+                VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?, ?, 'DONE')
                 """,
                 id.toString(),
-                teacherId,
                 subjectId,
+                teacherId,
+                topicOf(original),
                 original,
                 file.getContentType() == null ? "" : file.getContentType(),
+                file.getSize(),
                 stored.toString()
         );
         for (Chunk chunk : chunks) {
@@ -87,19 +91,64 @@ public class DocumentIngestionService {
             jdbc.update(
                     """
                     INSERT INTO knowledge_chunk
-                        (id, title, content, embedding, document_id, source_label, chunk_index)
-                    VALUES (?::uuid, ?, ?, ?::vector, ?::uuid, ?, ?)
+                        (id, course_id, document_id, topic, title, source_label, chunk_index, content, embedding)
+                    VALUES (?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?, ?, ?::vector)
                     """,
                     UUID.randomUUID().toString(),
-                    original,
-                    chunk.text(),
-                    VectorLiteral.format(vector),
+                    subjectId,
                     id.toString(),
+                    topicOf(original),
+                    original,
                     chunk.label(),
-                    chunk.index()
+                    chunk.index(),
+                    chunk.text(),
+                    VectorLiteral.format(vector)
             );
         }
         return new IngestedDocument(id.toString(), original, chunks.size());
+    }
+
+    public String subjectIdOf(String teacherId, String documentId) {
+        List<String> rows = jdbc.query(
+                """
+                SELECT course_id::text FROM course_document
+                WHERE id = ?::uuid AND uploaded_by = ?::uuid
+                """,
+                (rs, row) -> rs.getString(1),
+                documentId,
+                teacherId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    @Transactional
+    public void delete(String teacherId, String documentId) {
+        List<String> paths = jdbc.query(
+                """
+                SELECT storage_path FROM course_document
+                WHERE id = ?::uuid AND uploaded_by = ?::uuid
+                """,
+                (rs, row) -> rs.getString(1),
+                documentId,
+                teacherId
+        );
+        if (paths.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Document not found");
+        }
+        jdbc.update(
+                """
+                DELETE FROM question_source_chunk
+                WHERE chunk_id IN (SELECT id FROM knowledge_chunk WHERE document_id = ?::uuid)
+                """,
+                documentId
+        );
+        jdbc.update("DELETE FROM knowledge_chunk WHERE document_id = ?::uuid", documentId);
+        jdbc.update(
+                "DELETE FROM course_document WHERE id = ?::uuid AND uploaded_by = ?::uuid",
+                documentId,
+                teacherId
+        );
+        delete(Path.of(paths.getFirst()));
     }
 
     public List<IngestedDocument> list(String teacherId, String subjectId) {
@@ -108,7 +157,7 @@ public class DocumentIngestionService {
                 SELECT d.id::text, d.original_name, count(c.id)
                 FROM course_document d
                 LEFT JOIN knowledge_chunk c ON c.document_id = d.id
-                WHERE d.teacher_id = ? AND d.subject_id = ?::uuid
+                WHERE d.uploaded_by = ?::uuid AND d.course_id = ?::uuid
                 GROUP BY d.id, d.original_name, d.created_at
                 ORDER BY d.created_at DESC
                 """,
@@ -126,7 +175,7 @@ public class DocumentIngestionService {
                 SELECT c.title, c.source_label, c.content
                 FROM knowledge_chunk c
                 JOIN course_document d ON d.id = c.document_id
-                WHERE d.teacher_id = ? AND d.subject_id = ?::uuid
+                WHERE d.uploaded_by = ?::uuid AND d.course_id = ?::uuid
                 ORDER BY c.embedding <=> ?::vector
                 LIMIT ?
                 """,
@@ -139,6 +188,11 @@ public class DocumentIngestionService {
                 literal,
                 limit
         );
+    }
+
+    private static String topicOf(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
     }
 
     private static String extension(String name) {

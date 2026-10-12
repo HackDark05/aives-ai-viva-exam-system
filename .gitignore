@@ -7,3 +7,9 @@ coverage
 .env.local
 *.log
 .DS_Store
+
+# CodeGraph local index (machine-specific; locked while MCP runs)
+.codegraph/*.db
+.codegraph/*.db-shm
+.codegraph/*.db-wal
+.codegraph/cache/
