@@ -66,6 +66,28 @@ public final class DeskRecords {
     ) {
     }
 
+    public record ExamListItem(
+            String id,
+            String title,
+            String format,
+            String status,
+            String subjectId,
+            String subjectName,
+            int questionCount
+    ) {
+    }
+
+    public record ExamDetailItem(
+            String id,
+            String title,
+            String format,
+            String status,
+            String subjectId,
+            String subjectName,
+            List<QuestionItem> questions
+    ) {
+    }
+
     public record SessionItem(
             String id,
             String title,

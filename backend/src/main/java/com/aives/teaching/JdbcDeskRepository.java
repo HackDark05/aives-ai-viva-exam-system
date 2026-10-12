@@ -1,6 +1,7 @@
 package com.aives.teaching;
 
 import com.aives.teaching.DeskRecords.AttemptItem;
+import com.aives.teaching.DeskRecords.ExamListItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.RubricCriterionItem;
 import com.aives.teaching.DeskRecords.RubricDetailItem;
@@ -235,11 +236,56 @@ public class JdbcDeskRepository {
         }
     }
 
-    public List<QuestionItem> questions(String status) {
-        if (status == null || status.isBlank()) {
-            return jdbc.query(QUESTION_SELECT + " ORDER BY q.created_at DESC", questionMapper());
+    @Transactional
+    public void insertRubric(
+            UUID id,
+            String subjectId,
+            String teacherId,
+            String name,
+            String description,
+            List<RubricCriterionItem> criteria
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO rubric (id, course_id, name, description, created_by)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?::uuid)
+                """,
+                id.toString(),
+                subjectId,
+                name,
+                description == null ? "" : description,
+                teacherId
+        );
+        int order = 0;
+        for (RubricCriterionItem criterion : criteria) {
+            jdbc.update(
+                    """
+                    INSERT INTO rubric_criterion (id, rubric_id, name, description, max_points, sort_order)
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?, ?)
+                    """,
+                    criterion.id(),
+                    id.toString(),
+                    criterion.name(),
+                    criterion.description() == null ? "" : criterion.description(),
+                    criterion.maxPoints(),
+                    order++
+            );
         }
-        return jdbc.query(QUESTION_SELECT + " WHERE q.status = ? ORDER BY q.created_at DESC", questionMapper(), status);
+    }
+
+    public List<QuestionItem> questions(String teacherId, String status) {
+        String owned = """
+                 JOIN course_assignment ca ON ca.course_id = q.course_id AND ca.teacher_id = ?::uuid
+                """;
+        if (status == null || status.isBlank()) {
+            return jdbc.query(QUESTION_SELECT + owned + " ORDER BY q.created_at DESC", questionMapper(), teacherId);
+        }
+        return jdbc.query(
+                QUESTION_SELECT + owned + " WHERE q.status = ? ORDER BY q.created_at DESC",
+                questionMapper(),
+                teacherId,
+                status
+        );
     }
 
     public void insertQuestion(
@@ -363,6 +409,78 @@ public class JdbcDeskRepository {
         );
     }
 
+    public List<ExamListItem> examsForTeacher(String teacherId) {
+        return jdbc.query(EXAM_SELECT + " WHERE e.teacher_id = ?::uuid ORDER BY e.created_at DESC", examMapper(), teacherId);
+    }
+
+    public ExamListItem examForTeacher(String examId, String teacherId) {
+        List<ExamListItem> rows = jdbc.query(
+                EXAM_SELECT + " WHERE e.id = ?::uuid AND e.teacher_id = ?::uuid",
+                examMapper(),
+                examId,
+                teacherId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public void renameExam(String examId, String teacherId, String title) {
+        jdbc.update(
+                """
+                UPDATE exam_session
+                SET title = ?
+                WHERE id = ?::uuid AND teacher_id = ?::uuid
+                """,
+                title,
+                examId,
+                teacherId
+        );
+    }
+
+    public void setExamStatus(String examId, String teacherId, String status) {
+        jdbc.update(
+                """
+                UPDATE exam_session
+                SET status = ?
+                WHERE id = ?::uuid AND teacher_id = ?::uuid
+                """,
+                status,
+                examId,
+                teacherId
+        );
+    }
+
+    public int attemptCount(String examId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM exam_attempt WHERE session_id = ?::uuid",
+                Integer.class,
+                examId
+        );
+        return count == null ? 0 : count;
+    }
+
+    @Transactional
+    public void replaceExamQuestions(String examId, List<String> questionIds) {
+        jdbc.update("DELETE FROM exam_session_question WHERE session_id = ?::uuid", examId);
+        int order = 1;
+        for (String questionId : questionIds) {
+            jdbc.update(
+                    """
+                    INSERT INTO exam_session_question (session_id, question_id, sort_order)
+                    VALUES (?::uuid, ?::uuid, ?)
+                    """,
+                    examId,
+                    questionId,
+                    order++
+            );
+        }
+    }
+
+    @Transactional
+    public void deleteExam(String examId) {
+        jdbc.update("DELETE FROM exam_session_question WHERE session_id = ?::uuid", examId);
+        jdbc.update("DELETE FROM exam_session WHERE id = ?::uuid", examId);
+    }
+
     public void linkQuestion(String examId, String questionId) {
         jdbc.update(
                 """
@@ -449,8 +567,8 @@ public class JdbcDeskRepository {
         return jdbc.query(ATTEMPT_SELECT + " ORDER BY a.started_at DESC", attemptMapper());
     }
 
-    public void setScore(String attemptId, String teacherId, int score) {
-        jdbc.update(
+    public int setScore(String attemptId, String teacherId, int score) {
+        return jdbc.update(
                 """
                 UPDATE exam_attempt a
                 SET score = ?
@@ -522,6 +640,25 @@ public class JdbcDeskRepository {
     private static String shortCode(String locale) {
         int dash = locale.indexOf('-');
         return dash < 0 ? locale : locale.substring(0, dash);
+    }
+
+    private static final String EXAM_SELECT = """
+            SELECT e.id::text, e.title, e.format, e.status, e.course_id::text, COALESCE(c.name, ''),
+                   (SELECT count(*) FROM exam_session_question esq WHERE esq.session_id = e.id)::int
+            FROM exam_session e
+            LEFT JOIN course c ON c.id = e.course_id
+            """;
+
+    private static RowMapper<ExamListItem> examMapper() {
+        return (rs, row) -> new ExamListItem(
+                rs.getString(1),
+                rs.getString(2),
+                rs.getString(3),
+                rs.getString(4),
+                rs.getString(5),
+                rs.getString(6),
+                rs.getInt(7)
+        );
     }
 
     private static RowMapper<QuestionItem> questionMapper() {
