@@ -113,4 +113,38 @@ public final class DeskRecords {
 
     public record SpeechSettings(String sttLanguage, String ttsLanguage) {
     }
+
+    public record AnswerSubmissionRequest(
+            String answer,
+            Integer durationMs
+    ) {
+    }
+
+    public record VivaEvaluationItem(
+            String turnId,
+            String questionId,
+            int score,
+            boolean isSufficient,
+            String feedback,
+            String followUpQuestion
+    ) {
+    }
+
+    public record VivaTurnItem(
+            String turnId,
+            String questionId,
+            String parentTurnId,
+            int turnNo,
+            String turnType,
+            String questionText,
+            String transcript,
+            boolean needsFollowUp,
+            String followUpReason
+    ) {
+    }
+
+    public record SubmitAttemptRequest(
+            Integer score
+    ) {
+    }
 }

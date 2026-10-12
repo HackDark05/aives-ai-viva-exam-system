@@ -9,6 +9,7 @@ import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SessionItem;
 import com.aives.teaching.DeskRecords.SpeechSettings;
 import com.aives.teaching.DeskRecords.SubjectItem;
+import com.aives.teaching.DeskRecords.VivaTurnItem;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -544,6 +545,113 @@ public class JdbcDeskRepository {
                 attemptId.toString(),
                 examId,
                 studentId
+        );
+    }
+
+    public String findAttemptId(String examId, String studentId) {
+        List<String> rows = jdbc.query(
+                "SELECT id::text FROM exam_attempt WHERE session_id = ?::uuid AND student_id = ?::uuid",
+                (rs, row) -> rs.getString(1),
+                examId,
+                studentId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public int nextTurnNo(String attemptId) {
+        Integer maxNo = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(turn_no), 0) FROM question_turn WHERE attempt_id = ?::uuid",
+                Integer.class,
+                attemptId
+        );
+        return (maxNo == null ? 0 : maxNo) + 1;
+    }
+
+    public void insertTurn(
+            UUID turnId,
+            String attemptId,
+            String questionId,
+            String parentTurnId,
+            int turnNo,
+            String turnType,
+            Integer followUpNo,
+            String questionText
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO question_turn (id, attempt_id, question_id, parent_turn_id, turn_no, turn_type, follow_up_no, question_text)
+                VALUES (?::uuid, ?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?)
+                """,
+                turnId.toString(),
+                attemptId,
+                questionId,
+                parentTurnId,
+                turnNo,
+                turnType,
+                followUpNo,
+                questionText
+        );
+    }
+
+    public void insertAnswer(
+            UUID answerId,
+            String turnId,
+            String transcript,
+            boolean needsFollowUp,
+            String followUpReason,
+            Integer durationMs
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO answer (id, turn_id, status, transcript, needs_follow_up, follow_up_reason, duration_ms)
+                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?)
+                ON CONFLICT (turn_id) DO UPDATE SET transcript = EXCLUDED.transcript, needs_follow_up = EXCLUDED.needs_follow_up
+                """,
+                answerId.toString(),
+                turnId,
+                transcript,
+                needsFollowUp,
+                followUpReason,
+                durationMs
+        );
+    }
+
+    public List<VivaTurnItem> turnsForAttempt(String attemptId) {
+        return jdbc.query(
+                """
+                SELECT qt.id::text, qt.question_id::text, qt.parent_turn_id::text,
+                       qt.turn_no, qt.turn_type, qt.question_text,
+                       COALESCE(ans.transcript, ''), COALESCE(ans.needs_follow_up, false),
+                       COALESCE(ans.follow_up_reason, '')
+                FROM question_turn qt
+                LEFT JOIN answer ans ON ans.turn_id = qt.id
+                WHERE qt.attempt_id = ?::uuid
+                ORDER BY qt.turn_no ASC
+                """,
+                (rs, row) -> new VivaTurnItem(
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getInt(4),
+                        rs.getString(5),
+                        rs.getString(6),
+                        rs.getString(7),
+                        rs.getBoolean(8),
+                        rs.getString(9)
+                ),
+                attemptId
+        );
+    }
+
+    public void submitAttempt(String attemptId, int score) {
+        jdbc.update(
+                """
+                UPDATE exam_attempt
+                SET score = ?, status = 'SUBMITTED', submitted_at = now()
+                WHERE id = ?::uuid
+                """,
+                score,
+                attemptId
         );
     }
 
