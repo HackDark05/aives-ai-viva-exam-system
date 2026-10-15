@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { FileUpIcon, UploadCloudIcon } from "lucide-react";
+import { FileUpIcon, UploadCloudIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { cn } from "cn";
 
 const ACCEPT = ".pdf,.docx,.pptx,application/pdf";
 const EXTENSIONS = new Set(["pdf", "docx", "pptx"]);
+/** Keep in sync with DOCUMENTS_MAX_SIZE on the API (default 25MB). */
+export const MAX_MATERIAL_BYTES = 25 * 1024 * 1024;
 
 function isAllowedFile(file: File) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -19,28 +21,39 @@ function isAllowedFile(file: File) {
   );
 }
 
+export function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function sameFile(a: File, b: File) {
+  return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+}
+
 export function MaterialDropzone({
   id: idProp,
-  file,
-  onFileChange,
+  files,
+  onFilesChange,
   disabled,
   label,
   dropTitle,
   dropHint,
   dropActive,
   invalidTypeMessage,
-  selectedLabel,
+  tooLargeMessage,
+  removeLabel,
 }: {
   id?: string;
-  file: File | null;
-  onFileChange: (file: File | null) => void;
+  files: File[];
+  onFilesChange: (files: File[]) => void;
   disabled?: boolean;
   label: string;
   dropTitle: string;
   dropHint: string;
   dropActive: string;
   invalidTypeMessage: string;
-  selectedLabel: (name: string) => string;
+  tooLargeMessage: (name: string) => string;
+  removeLabel: (name: string) => string;
 }) {
   const autoId = useId();
   const inputId = idProp ?? autoId;
@@ -49,28 +62,33 @@ export function MaterialDropzone({
   const dragDepth = useRef(0);
 
   useEffect(() => {
-    if (!file && inputRef.current) {
+    if (files.length === 0 && inputRef.current) {
       inputRef.current.value = "";
     }
-  }, [file]);
+  }, [files]);
 
-  const pickFile = useCallback(
-    (next: File | null) => {
-      if (!next) {
-        onFileChange(null);
-        return;
+  const addFiles = useCallback(
+    (picked: File[]) => {
+      const accepted: File[] = [];
+      for (const next of picked) {
+        if (!isAllowedFile(next)) {
+          toast.error(invalidTypeMessage);
+          continue;
+        }
+        if (next.size > MAX_MATERIAL_BYTES) {
+          toast.error(tooLargeMessage(next.name));
+          continue;
+        }
+        if (!files.some((file) => sameFile(file, next))) accepted.push(next);
       }
-      if (!isAllowedFile(next)) {
-        toast.error(invalidTypeMessage);
-        return;
-      }
-      onFileChange(next);
+      if (accepted.length > 0) onFilesChange([...files, ...accepted]);
     },
-    [invalidTypeMessage, onFileChange],
+    [files, invalidTypeMessage, onFilesChange, tooLargeMessage],
   );
 
   function onInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    pickFile(event.target.files?.[0] ?? null);
+    addFiles(Array.from(event.target.files ?? []));
+    event.target.value = "";
   }
 
   function onDragEnter(event: React.DragEvent) {
@@ -100,8 +118,7 @@ export function MaterialDropzone({
     dragDepth.current = 0;
     setDragging(false);
     if (disabled) return;
-    const dropped = event.dataTransfer.files?.[0];
-    if (dropped) pickFile(dropped);
+    addFiles(Array.from(event.dataTransfer.files ?? []));
   }
 
   function openPicker() {
@@ -144,6 +161,7 @@ export function MaterialDropzone({
           id={inputId}
           type="file"
           accept={ACCEPT}
+          multiple
           className="sr-only"
           disabled={disabled}
           onChange={onInputChange}
@@ -158,12 +176,31 @@ export function MaterialDropzone({
             <FileUpIcon className="size-8 text-muted-foreground" aria-hidden />
             <p className="text-sm font-medium">{dropTitle}</p>
             <FieldDescription className="max-w-sm">{dropHint}</FieldDescription>
-            {file ? (
-              <p className="mt-1 rounded-md bg-muted px-2 py-1 text-xs font-medium">{selectedLabel(file.name)}</p>
-            ) : null}
           </>
         )}
       </div>
+      {files.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {files.map((file) => (
+            <li
+              key={`${file.name}-${file.size}-${file.lastModified}`}
+              className="flex max-w-full items-center gap-1 rounded-md bg-muted py-1 pl-2 pr-1 text-xs font-medium"
+            >
+              <span className="truncate">{file.name}</span>
+              <span className="shrink-0 text-muted-foreground">{formatBytes(file.size)}</span>
+              <button
+                type="button"
+                className="rounded p-0.5 hover:bg-background disabled:opacity-50"
+                aria-label={removeLabel(file.name)}
+                disabled={disabled}
+                onClick={() => onFilesChange(files.filter((other) => !sameFile(other, file)))}
+              >
+                <XIcon className="size-3.5" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </Field>
   );
 }

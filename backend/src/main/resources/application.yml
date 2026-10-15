@@ -6,8 +6,9 @@ spring:
     name: aives-api
   servlet:
     multipart:
-      max-file-size: 200MB
-      max-request-size: 200MB
+      max-file-size: ${DOCUMENTS_MAX_SIZE:25MB}
+      # Slightly above the file limit to leave room for the other form fields.
+      max-request-size: ${DOCUMENTS_MAX_REQUEST_SIZE:26MB}
   datasource:
     url: jdbc:postgresql://localhost:5433/aives
     username: aives
@@ -19,7 +20,11 @@ app:
   frontend-url: ${FRONTEND_URL:http://localhost:3001}
   google-client-id: ${GOOGLE_CLIENT_ID:}
   documents-dir: ${DOCUMENTS_DIR:data/documents}
+  documents-max-size: ${DOCUMENTS_MAX_SIZE:25MB}
   ai:
     base-url: ${AI_BASE_URL:}
     api-key: ${AI_API_KEY:}
     model: ${AI_MODEL:}
+    fallback-models: ${AI_FALLBACK_MODELS:}
+    timeout: ${AI_TIMEOUT:30s}
+    max-retries: ${AI_MAX_RETRIES:2}
