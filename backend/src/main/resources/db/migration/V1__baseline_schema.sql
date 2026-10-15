@@ -1,6 +1,3 @@
--- AIVES schema: features 1 (question bank + rubric), 3 (AI viva core), 7 (administration).
--- Compatibility columns kept for existing screens: question.source_ref, exam_session.format, exam_attempt.score.
--- Applied once per Postgres volume by SchemaInitializer (see app_meta.seed_applied).
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE role (
@@ -127,9 +124,9 @@ CREATE TABLE question (
   expected_answer text,
   source_ref text,
   key_points text,
-  bloom_level varchar(20) NOT NULL, -- REMEMBER | UNDERSTAND | APPLY | ANALYZE
-  status varchar(20) NOT NULL DEFAULT 'PENDING_REVIEW', -- PENDING_REVIEW | APPROVED | REJECTED
-  source varchar(20) NOT NULL, -- MANUAL | IMPORT | AI
+  bloom_level varchar(20) NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'PENDING_REVIEW',
+  source varchar(20) NOT NULL,
   author_id uuid NOT NULL,
   reviewed_by uuid,
   reviewed_at timestamptz,
@@ -183,7 +180,7 @@ CREATE TABLE question_turn (
   question_id uuid,
   parent_turn_id uuid,
   turn_no int NOT NULL,
-  turn_type varchar(20) NOT NULL DEFAULT 'MAIN', -- MAIN | FOLLOW_UP
+  turn_type varchar(20) NOT NULL DEFAULT 'MAIN',
   follow_up_no int,
   question_text text NOT NULL,
   asked_at timestamptz NOT NULL DEFAULT now(),
@@ -193,12 +190,12 @@ CREATE TABLE question_turn (
 CREATE TABLE answer (
   id uuid PRIMARY KEY,
   turn_id uuid NOT NULL UNIQUE,
-  status varchar(20) NOT NULL DEFAULT 'ANSWERED', -- ANSWERED | TIMEOUT | SKIPPED
+  status varchar(20) NOT NULL DEFAULT 'ANSWERED',
   transcript text,
   stt_confidence numeric(4,3),
   duration_ms int,
   needs_follow_up boolean NOT NULL DEFAULT false,
-  follow_up_reason varchar(20), -- VAGUE | MISSING_POINT | CONTRADICTION
+  follow_up_reason varchar(20),
   stt_latency_ms int,
   llm_latency_ms int,
   answered_at timestamptz NOT NULL DEFAULT now()

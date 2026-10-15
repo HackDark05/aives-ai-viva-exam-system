@@ -1,4 +1,36 @@
 export const en = {
+  history: {
+    title: "Exam History",
+    subtitle: "Review your past test attempts and detailed results",
+    search_placeholder: "Search test name...",
+    table: {
+      test_name: "Test Name",
+      date: "Date Taken",
+      score: "Score",
+      duration: "Duration",
+      status: "Status",
+      note: "Personal Note",
+      actions: "Actions",
+    },
+    status: {
+      completed: "Completed",
+      in_progress: "In Progress",
+    },
+    actions: {
+      view: "View Details",
+      edit_note: "Edit Note",
+      delete: "Delete History",
+      save: "Save Changes",
+      cancel: "Cancel",
+      confirm_delete: "Are you sure you want to delete this practice attempt?",
+    },
+    modal: {
+      detail_title: "Test Result Details",
+      edit_title: "Update Attempt Note",
+      total_questions: "Total Questions",
+      correct_answers: "Correct Answers",
+    },
+  },
   common: {
     signOut: "Sign out",
     home: "Home",
@@ -26,6 +58,8 @@ export const en = {
     student: {
       tests: "Tests",
       scores: "Scores",
+      profile: "My Profile",
+      history: "Exam History",
     },
     admin: {
       dashboard: "Dashboard",
@@ -259,6 +293,23 @@ export const en = {
       loadError: "Could not load exam tools.",
       draftsReady: "{count} drafts ready to review.",
       sessionStarted: "The session is open for students.",
+      openSessions: "Your sessions",
+      openSessionsDesc: "Rename a session, close it so students can no longer enter, or delete it before anyone has entered.",
+      noSessions: "No sessions yet. Open one with the form above.",
+      questionsCount: "{count} questions",
+      rename: "Save name",
+      renamed: "Session renamed.",
+      closeSession: "Close",
+      reopenSession: "Reopen",
+      sessionClosed: "Session closed.",
+      sessionReopened: "Session is open for students.",
+      deleteSession: "Delete",
+      deleteSessionTitle: "Delete this session?",
+      deleteSessionDesc: "This removes the session. A session students have already entered cannot be deleted — close it instead.",
+      deleteSessionAction: "Delete session",
+      sessionDeleted: "Session deleted.",
+      statusInProgress: "Open",
+      statusCompleted: "Closed",
       selectQuestion: "Select at least one approved question.",
       chooseSubjectRubric: "Choose a subject and rubric first.",
       noRubricForSubject: "This subject has no rubric. Pick another subject or ask an admin to assign one.",
@@ -277,6 +328,13 @@ export const en = {
       loadError: "Could not load rubrics.",
       saveError: "Could not save rubric.",
       saved: "Rubric saved.",
+      createTitle: "New rubric",
+      createDesc: "Add a rubric for the selected subject. You can edit its criteria after it is created.",
+      createName: "Rubric name",
+      createNamePlaceholder: "Oral clarity",
+      createAction: "Create rubric",
+      created: "Rubric created.",
+      pickSubject: "Choose one subject before creating a rubric.",
       edit: "Edit",
       editLink: "Edit rubric",
       editTitle: "Edit rubric",
@@ -330,10 +388,10 @@ export const en = {
 
 type DeepString<T> = {
   [K in keyof T]: T[K] extends string
-    ? string
-    : T[K] extends readonly string[]
-      ? readonly string[]
-      : DeepString<T[K]>;
+  ? string
+  : T[K] extends readonly string[]
+  ? readonly string[]
+  : DeepString<T[K]>;
 };
 
 export type Messages = DeepString<typeof en>;

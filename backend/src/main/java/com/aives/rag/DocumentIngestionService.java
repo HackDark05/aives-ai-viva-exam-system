@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -105,6 +106,49 @@ public class DocumentIngestionService {
             );
         }
         return new IngestedDocument(id.toString(), original, chunks.size());
+    }
+
+    public String subjectIdOf(String teacherId, String documentId) {
+        List<String> rows = jdbc.query(
+                """
+                SELECT course_id::text FROM course_document
+                WHERE id = ?::uuid AND uploaded_by = ?::uuid
+                """,
+                (rs, row) -> rs.getString(1),
+                documentId,
+                teacherId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    @Transactional
+    public void delete(String teacherId, String documentId) {
+        List<String> paths = jdbc.query(
+                """
+                SELECT storage_path FROM course_document
+                WHERE id = ?::uuid AND uploaded_by = ?::uuid
+                """,
+                (rs, row) -> rs.getString(1),
+                documentId,
+                teacherId
+        );
+        if (paths.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Document not found");
+        }
+        jdbc.update(
+                """
+                DELETE FROM question_source_chunk
+                WHERE chunk_id IN (SELECT id FROM knowledge_chunk WHERE document_id = ?::uuid)
+                """,
+                documentId
+        );
+        jdbc.update("DELETE FROM knowledge_chunk WHERE document_id = ?::uuid", documentId);
+        jdbc.update(
+                "DELETE FROM course_document WHERE id = ?::uuid AND uploaded_by = ?::uuid",
+                documentId,
+                teacherId
+        );
+        delete(Path.of(paths.getFirst()));
     }
 
     public List<IngestedDocument> list(String teacherId, String subjectId) {

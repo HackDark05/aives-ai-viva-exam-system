@@ -23,6 +23,15 @@ import {
 } from "@/lib/teacher/rubrics";
 
 type Subject = { id: string; name: string; code: string };
+type TeacherExam = {
+  id: string;
+  title: string;
+  format: string;
+  status: string;
+  subjectId: string;
+  subjectName: string;
+  questionCount: number;
+};
 type Question = {
   id: string;
   subjectId: string;
@@ -61,16 +70,27 @@ export function TeacherTests() {
   const [rejecting, setRejecting] = useState(false);
   const [materialCount, setMaterialCount] = useState<number | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [exams, setExams] = useState<TeacherExam[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [busyExamId, setBusyExamId] = useState<string | null>(null);
+  const [deleteExam, setDeleteExam] = useState<TeacherExam | null>(null);
+
+  function applyExams(next: TeacherExam[]) {
+    setExams(next);
+    setNames(Object.fromEntries(next.map((exam) => [exam.id, exam.title])));
+  }
 
   async function reload() {
-    const [nextSubjects, nextRubrics, nextQuestions] = await Promise.all([
+    const [nextSubjects, nextRubrics, nextQuestions, nextExams] = await Promise.all([
       api<Subject[]>("/api/teaching/subjects", { auth: true }),
       api<TeachingRubric[]>("/api/teaching/rubrics", { auth: true }),
       api<Question[]>("/api/teaching/questions", { auth: true }),
+      api<TeacherExam[]>("/api/teaching/exams", { auth: true }),
     ]);
     setSubjects(nextSubjects);
     setRubrics(nextRubrics);
     setQuestions(nextQuestions);
+    applyExams(nextExams);
     setSubjectId((current) => current || nextSubjects[0]?.id || "");
     setRubricId((current) =>
       resolveRubricIdForSubject(nextRubrics, subjectId || nextSubjects[0]?.id || "", current),
@@ -83,12 +103,14 @@ export function TeacherTests() {
       api<Subject[]>("/api/teaching/subjects", { auth: true }),
       api<TeachingRubric[]>("/api/teaching/rubrics", { auth: true }),
       api<Question[]>("/api/teaching/questions", { auth: true }),
+      api<TeacherExam[]>("/api/teaching/exams", { auth: true }),
     ])
-      .then(([nextSubjects, nextRubrics, nextQuestions]) => {
+      .then(([nextSubjects, nextRubrics, nextQuestions, nextExams]) => {
         if (cancelled) return;
         setSubjects(nextSubjects);
         setRubrics(nextRubrics);
         setQuestions(nextQuestions);
+        applyExams(nextExams);
         const fromUrl = searchParams.get("subjectId");
         const validFromUrl =
           fromUrl && nextSubjects.some((subject) => subject.id === fromUrl) ? fromUrl : null;
@@ -264,11 +286,55 @@ export function TeacherTests() {
       });
       setTitle("");
       setSelected([]);
+      applyExams(await api<TeacherExam[]>("/api/teaching/exams", { auth: true }));
       toast.success(t("teacher.tests.sessionStarted"));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function saveExamName(exam: TeacherExam) {
+    const title = (names[exam.id] ?? exam.title).trim();
+    if (!title) return;
+    setBusyExamId(exam.id);
+    try {
+      await api(`/api/teaching/exams/${exam.id}`, { method: "PATCH", auth: true, body: { title } });
+      applyExams(await api<TeacherExam[]>("/api/teaching/exams", { auth: true }));
+      toast.success(t("teacher.tests.renamed"));
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
+    } finally {
+      setBusyExamId(null);
+    }
+  }
+
+  async function setExamStatus(exam: TeacherExam, status: "IN_PROGRESS" | "COMPLETED") {
+    setBusyExamId(exam.id);
+    try {
+      await api(`/api/teaching/exams/${exam.id}/status`, { method: "PATCH", auth: true, body: { status } });
+      applyExams(await api<TeacherExam[]>("/api/teaching/exams", { auth: true }));
+      toast.success(status === "COMPLETED" ? t("teacher.tests.sessionClosed") : t("teacher.tests.sessionReopened"));
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
+    } finally {
+      setBusyExamId(null);
+    }
+  }
+
+  async function confirmDeleteExam() {
+    if (!deleteExam) return;
+    setBusyExamId(deleteExam.id);
+    try {
+      await api(`/api/teaching/exams/${deleteExam.id}`, { method: "DELETE", auth: true });
+      applyExams(await api<TeacherExam[]>("/api/teaching/exams", { auth: true }));
+      toast.success(t("teacher.tests.sessionDeleted"));
+      setDeleteExam(null);
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : t("teacher.tests.loadError"));
+    } finally {
+      setBusyExamId(null);
     }
   }
 
@@ -567,6 +633,90 @@ export function TeacherTests() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle className="font-serif text-2xl">{t("teacher.tests.openSessions")}</CardTitle>
+          <CardDescription>{t("teacher.tests.openSessionsDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          {exams.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("teacher.tests.noSessions")}</p>
+          ) : (
+            <ul className="space-y-3">
+              {exams.map((exam) => (
+                <li key={exam.id} className="space-y-3 rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <StatusBadge
+                      label={
+                        exam.status === "IN_PROGRESS"
+                          ? t("teacher.tests.statusInProgress")
+                          : exam.status === "COMPLETED"
+                            ? t("teacher.tests.statusCompleted")
+                            : exam.status
+                      }
+                      variant={exam.status === "IN_PROGRESS" ? "info" : "neutral"}
+                    />
+                    <span className="text-muted-foreground">{exam.subjectName}</span>
+                    <span className="text-muted-foreground">
+                      {formatExamFormat(exam.format, labels.examFormat)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {t("teacher.tests.questionsCount", { count: String(exam.questionCount) })}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      aria-label={t("teacher.tests.sessionName")}
+                      value={names[exam.id] ?? exam.title}
+                      onChange={(event) =>
+                        setNames((current) => ({ ...current, [exam.id]: event.target.value }))
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busyExamId === exam.id}
+                      onClick={() => void saveExamName(exam)}
+                    >
+                      {t("teacher.tests.rename")}
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {exam.status === "IN_PROGRESS" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busyExamId === exam.id}
+                        onClick={() => void setExamStatus(exam, "COMPLETED")}
+                      >
+                        {t("teacher.tests.closeSession")}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busyExamId === exam.id}
+                        onClick={() => void setExamStatus(exam, "IN_PROGRESS")}
+                      >
+                        {t("teacher.tests.reopenSession")}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busyExamId === exam.id}
+                      onClick={() => setDeleteExam(exam)}
+                    >
+                      {t("teacher.tests.deleteSession")}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       <ConfirmDialog
         open={rejectTarget != null}
         title={t("teacher.common.rejectConfirmTitle")}
@@ -579,6 +729,19 @@ export function TeacherTests() {
           if (!rejecting) setRejectTarget(null);
         }}
         onConfirm={() => void confirmReject()}
+      />
+      <ConfirmDialog
+        open={deleteExam != null}
+        title={t("teacher.tests.deleteSessionTitle")}
+        description={t("teacher.tests.deleteSessionDesc")}
+        confirmLabel={t("teacher.tests.deleteSessionAction")}
+        cancelLabel={t("teacher.common.cancel")}
+        destructive
+        confirming={deleteExam != null && busyExamId === deleteExam.id}
+        onCancel={() => {
+          if (busyExamId == null) setDeleteExam(null);
+        }}
+        onConfirm={() => void confirmDeleteExam()}
       />
     </div>
   );
