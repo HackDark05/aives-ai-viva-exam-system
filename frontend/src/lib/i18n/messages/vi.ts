@@ -72,8 +72,8 @@ export const vi: Messages = {
     },
     admin: {
       dashboard: "Tổng quan",
-      people: "Người dùng",
-      performance: "Hiệu năng",
+      people: "Tài khoản",
+      performance: "Kết quả",
       settings: "Cài đặt",
       knowledge: "Tri thức",
     },
@@ -195,6 +195,10 @@ export const vi: Messages = {
         entered: "SV đã vào thi",
         scored: "Đã chấm",
         inProgress: "Đang diễn ra",
+        scheduled: "Đã lên lịch",
+        completed: "Đã hoàn thành",
+        draft: "Bản nháp",
+        published: "Đã công bố",
       },
     },
     overview: {
