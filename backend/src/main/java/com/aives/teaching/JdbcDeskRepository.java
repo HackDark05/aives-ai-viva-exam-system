@@ -604,16 +604,18 @@ public class JdbcDeskRepository {
             Integer durationMs,
             int score,
             boolean sufficient,
-            String feedback
+            String feedback,
+            String evaluator
     ) {
         jdbc.update(
                 """
                 INSERT INTO answer (id, turn_id, status, transcript, needs_follow_up, follow_up_reason, duration_ms,
-                                    score, is_sufficient, feedback)
-                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?, ?, ?, ?)
+                                    score, is_sufficient, feedback, evaluator)
+                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (turn_id) DO UPDATE SET transcript = EXCLUDED.transcript,
                     needs_follow_up = EXCLUDED.needs_follow_up, score = EXCLUDED.score,
-                    is_sufficient = EXCLUDED.is_sufficient, feedback = EXCLUDED.feedback
+                    is_sufficient = EXCLUDED.is_sufficient, feedback = EXCLUDED.feedback,
+                    evaluator = EXCLUDED.evaluator
                 """,
                 answerId.toString(),
                 turnId,
@@ -623,7 +625,8 @@ public class JdbcDeskRepository {
                 durationMs,
                 score,
                 sufficient,
-                feedback
+                feedback,
+                evaluator
         );
     }
 

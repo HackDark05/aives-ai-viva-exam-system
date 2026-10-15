@@ -9,6 +9,7 @@ import {
   RotateCcwIcon,
   SendIcon,
   SparklesIcon,
+  TriangleAlertIcon,
   Volume2Icon,
   VolumeXIcon,
 } from "lucide-react";
@@ -52,6 +53,10 @@ type EvaluationItem = {
   isSufficient: boolean;
   feedback: string;
   followUpQuestion?: string | null;
+  /** "AI", or "RULE_BASED" when the AI grader was unavailable and the score is provisional. */
+  evaluator: "AI" | "RULE_BASED";
+  fallbackReason?: string | null;
+  criteria?: CriterionScore[];
 };
 
 type SubmitResult = {
@@ -59,6 +64,17 @@ type SubmitResult = {
   answeredQuestions: number;
   totalQuestions: number;
 };
+
+type CriterionScore = {
+  name: string;
+  points: number;
+  maxPoints: number;
+  comment: string;
+};
+
+function formatPoints(points: number) {
+  return Number.isInteger(points) ? String(points) : points.toFixed(1);
+}
 
 export function StudentTests() {
   const { t } = useLocale();
@@ -247,7 +263,11 @@ function VivaExamRoom({
       );
 
       setEvaluations((prev) => ({ ...prev, [currentQuestion.id]: result }));
-      toast.success("AI đã đánh giá câu trả lời của bạn.");
+      if (result.evaluator === "RULE_BASED") {
+        toast.warning(t("student.tests.ruleBasedToast"));
+      } else {
+        toast.success("AI đã đánh giá câu trả lời của bạn.");
+      }
 
       // Nếu có câu hỏi phụ, tự động phát âm thanh câu hỏi phụ!
       if (result.followUpQuestion) {
@@ -588,13 +608,38 @@ function VivaExamRoom({
                     </span>
                   </div>
                   <span className="rounded-full bg-primary/15 px-3 py-0.5 text-xs font-bold text-primary">
-                    Điểm AI: {currentEvaluation.score} / 100
+                    {currentEvaluation.evaluator === "RULE_BASED"
+                      ? t("student.tests.provisionalScore", { score: String(currentEvaluation.score) })
+                      : t("student.tests.aiScore", { score: String(currentEvaluation.score) })}
                   </span>
                 </div>
+
+                {currentEvaluation.evaluator === "RULE_BASED" && (
+                  <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-950 dark:text-amber-100">
+                    <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                    {t("student.tests.ruleBasedNotice")}
+                  </p>
+                )}
 
                 <p className="text-sm leading-relaxed text-foreground/90">
                   {currentEvaluation.feedback}
                 </p>
+
+                {currentEvaluation.criteria && currentEvaluation.criteria.length > 0 && (
+                  <ul className="space-y-1.5 text-xs">
+                    {currentEvaluation.criteria.map((criterion) => (
+                      <li key={criterion.name} className="flex flex-wrap justify-between gap-x-3 gap-y-0.5">
+                        <span className="font-medium">{criterion.name}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {formatPoints(criterion.points)} / {formatPoints(criterion.maxPoints)}
+                        </span>
+                        {criterion.comment ? (
+                          <span className="w-full text-muted-foreground">{criterion.comment}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 {/* Nếu AI yêu cầu câu hỏi phụ (Follow-up) */}
                 {currentEvaluation.followUpQuestion && (

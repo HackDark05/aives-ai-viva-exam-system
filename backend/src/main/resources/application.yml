@@ -28,3 +28,6 @@ app:
     base-url: ${AI_BASE_URL:}
     api-key: ${AI_API_KEY:}
     model: ${AI_MODEL:}
+    fallback-models: ${AI_FALLBACK_MODELS:}
+    timeout: ${AI_TIMEOUT:30s}
+    max-retries: ${AI_MAX_RETRIES:2}
