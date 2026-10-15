@@ -152,13 +152,12 @@ export function TeacherTests() {
   useEffect(() => {
     if (!subjectId) return;
     let cancelled = false;
-    void (async () => {
-      try {
-        const docs = await api<{ id: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, {
-          auth: true,
-        });
-        if (!cancelled) setMaterialCount(docs.length);
-      } catch {
+    api<{ id: string; status: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, { auth: true })
+      .then((docs) => {
+        // Materials still processing (or failed) cannot be used for drafting yet.
+        if (!cancelled) setMaterialCount(docs.filter((doc) => doc.status === "DONE").length);
+      })
+      .catch(() => {
         if (!cancelled) setMaterialCount(0);
       }
     })();
@@ -372,7 +371,7 @@ export function TeacherTests() {
           {effectiveMaterialCount === 0 && subjectId ? (
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               {t("teacher.tests.noMaterialForSubject")}{" "}
-              <Link href="/teacher/bank" className="font-medium underline underline-offset-2">
+              <Link href="/teacher/subjects" className="font-medium underline underline-offset-2">
                 {t("teacher.tests.importMaterialLink")}
               </Link>
             </p>
