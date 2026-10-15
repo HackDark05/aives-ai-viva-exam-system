@@ -146,16 +146,11 @@ export function TeacherTests() {
     () => rubricsForSubject(rubrics, subjectId),
     [rubrics, subjectId],
   );
+  const effectiveRubricId = resolveRubricIdForSubject(rubrics, subjectId, rubricId) ?? "";
+  const effectiveMaterialCount = subjectId ? materialCount : null;
 
   useEffect(() => {
-    setRubricId((current) => resolveRubricIdForSubject(rubrics, subjectId, current));
-  }, [rubrics, subjectId]);
-
-  useEffect(() => {
-    if (!subjectId) {
-      setMaterialCount(null);
-      return;
-    }
+    if (!subjectId) return;
     let cancelled = false;
     api<{ id: string; status: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, { auth: true })
       .then((docs) => {
@@ -164,7 +159,8 @@ export function TeacherTests() {
       })
       .catch(() => {
         if (!cancelled) setMaterialCount(0);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -197,14 +193,14 @@ export function TeacherTests() {
       toast.error(message);
       return;
     }
-    const activeRubricId = resolveRubricIdForSubject(rubrics, subjectId, rubricId);
+    const activeRubricId = effectiveRubricId;
     if (!activeRubricId) {
       const message = t("teacher.tests.chooseSubjectRubric");
       setGenerateError(message);
       toast.error(message);
       return;
     }
-    if (materialCount === 0) {
+    if (effectiveMaterialCount === 0) {
       const message = t("teacher.tests.noMaterialForSubject");
       setGenerateError(message);
       toast.error(message);
@@ -372,7 +368,7 @@ export function TeacherTests() {
               {generateError}
             </p>
           ) : null}
-          {materialCount === 0 && subjectId ? (
+          {effectiveMaterialCount === 0 && subjectId ? (
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               {t("teacher.tests.noMaterialForSubject")}{" "}
               <Link href="/teacher/subjects" className="font-medium underline underline-offset-2">
@@ -394,8 +390,10 @@ export function TeacherTests() {
                 className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
                 value={subjectId}
                 onChange={(event) => {
-                  setSubjectId(event.target.value);
+                  const nextSubjectId = event.target.value;
+                  setSubjectId(nextSubjectId);
                   setSelected([]);
+                  setRubricId((current) => resolveRubricIdForSubject(rubrics, nextSubjectId, current));
                 }}
               >
                 {subjects.length === 0 ? (
@@ -412,7 +410,7 @@ export function TeacherTests() {
               <RubricFieldLabel
                 htmlFor="draft-rubric"
                 subjectId={subjectId}
-                rubricId={rubricId}
+                rubricId={effectiveRubricId}
                 label={t("teacher.common.rubric")}
                 hint={t("teacher.rubrics.editLink")}
                 returnTo="/teacher/tests"
@@ -420,7 +418,7 @@ export function TeacherTests() {
               <select
                 id="draft-rubric"
                 className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-                value={rubricId}
+                value={effectiveRubricId}
                 onChange={(event) => setRubricId(event.target.value)}
               >
                 {subjectRubrics.length === 0 ? (
@@ -461,7 +459,7 @@ export function TeacherTests() {
                 generating ||
                 !subjectId ||
                 subjectRubrics.length === 0 ||
-                materialCount !== null && materialCount === 0
+                effectiveMaterialCount !== null && effectiveMaterialCount === 0
               }
             >
               {generating
@@ -572,8 +570,10 @@ export function TeacherTests() {
                   className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
                   value={subjectId}
                   onChange={(event) => {
-                    setSubjectId(event.target.value);
+                    const nextSubjectId = event.target.value;
+                    setSubjectId(nextSubjectId);
                     setSelected([]);
+                    setRubricId((current) => resolveRubricIdForSubject(rubrics, nextSubjectId, current));
                   }}
                 >
                   {subjects.map((subject) => (

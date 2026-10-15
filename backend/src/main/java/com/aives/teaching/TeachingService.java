@@ -104,6 +104,15 @@ public class TeachingService {
         requireSubject(teacher.id(), subjectId);
     }
 
+    public void deleteDocument(PublicUser teacher, String documentId) {
+        String subjectId = ingestion.subjectIdOf(teacher.id(), documentId);
+        if (subjectId == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Document not found");
+        }
+        requireSubject(teacher.id(), subjectId);
+        ingestion.delete(teacher.id(), documentId);
+    }
+
     public List<RubricItem> rubrics(PublicUser teacher) {
         return desk.rubricsForTeacher(teacher.id());
     }
