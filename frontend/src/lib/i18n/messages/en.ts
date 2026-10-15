@@ -59,6 +59,7 @@ export const en = {
     teacher: {
       overview: "Overview",
       exams: "Exams",
+      createSubject: "Create Subject",
       bank: "Question bank",
       scores: "Results",
     },
@@ -139,6 +140,7 @@ export const en = {
     pages: {
       overview: "Overview",
       exams: "Exams",
+      createSubject: "Create Subject",
       bank: "Question bank",
       rubrics: "Rubrics",
       scores: "Results",
@@ -212,11 +214,11 @@ export const en = {
       openBank: "Open question bank",
       openScores: "Grade results",
       subjects: "Your subjects",
-      noSubjects: "Create a subject in the question bank to get started.",
+      noSubjects: "Create a subject from Create Subject to get started.",
       moreSubjects: "+{count} more",
       quickActions: "Quick actions",
       actionStartExam: "Open a new exam session",
-      actionManageBank: "Manage questions & materials",
+      actionManageBank: "Manage questions",
       recentResults: "Recent results",
       recentResultsDesc: "Latest student attempts across your exams.",
       noResults: "No student attempts yet.",
@@ -225,7 +227,7 @@ export const en = {
     bank: {
       eyebrow: "Question bank",
       title: "Manage viva questions",
-      lead: "Import course materials, write or import oral questions, and attach Bloom levels plus scoring rubrics. AI drafts are reviewed here before they enter the official bank.",
+      lead: "Write or import oral questions, and attach Bloom levels plus scoring rubrics. AI drafts are reviewed here before they enter the official bank.",
       subjectTitle: "Subject & course material",
       subjectDesc:
         "Create a subject, then import a PDF, DOCX, or PPTX. Files are indexed for RAG when you draft questions.",
@@ -278,7 +280,7 @@ export const en = {
       subjectCodesDesc: "Only subject codes are listed. Expand one to manage its questions.",
       questionCount: "{count} questions",
       emptyForSubject: "No questions for this subject yet.",
-      noSubjectsInList: "No subjects yet. Create one in the question bank first.",
+      noSubjectsInList: "No subjects yet. Create one under Create Subject first.",
       editQuestion: "Edit",
       deleteQuestion: "Delete",
       deleteConfirmTitle: "Delete this question?",
@@ -348,8 +350,8 @@ export const en = {
       chooseSubjectRubric: "Choose a subject and rubric first.",
       noRubricForSubject: "This subject has no rubric. Pick another subject or ask an admin to assign one.",
       noMaterialForSubject:
-        "No course material for this subject yet. Import a PDF, DOCX, or PPTX from the question bank first.",
-      importMaterialLink: "Open question bank",
+        "No course material for this subject yet. Import a PDF, DOCX, or PPTX from Create Subject first.",
+      importMaterialLink: "Open Create Subject",
       generateHint: "Requires imported material, a rubric for the same subject, and AI configured on the server.",
     },
     rubrics: {

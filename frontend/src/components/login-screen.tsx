@@ -33,6 +33,13 @@ export function LoginScreen() {
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
 
+  function enter(result: LoginResponse) {
+    setSession(result.accessToken);
+    toast.success(t("login.welcome", { name: result.user.name.split(" ")[0] }));
+    router.replace(homeForRole(result.user.role));
+    router.refresh();
+  }
+
   function finish(result: LoginResponse, chosenRole: Role) {
     if (result.user.role !== chosenRole) {
       const roleKey =
@@ -44,10 +51,7 @@ export function LoginScreen() {
       toast.error(t("errors.roleMismatch", { role: t(roleKey) }));
       return;
     }
-    setSession(result.accessToken);
-    toast.success(t("login.welcome", { name: result.user.name.split(" ")[0] }));
-    router.replace(homeForRole(result.user.role));
-    router.refresh();
+    enter(result);
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -83,17 +87,13 @@ export function LoginScreen() {
   }
 
   async function onGoogleCredential(idToken: string) {
-    if (!selectedRole) {
-      toast.error(t("errors.chooseRole"));
-      return;
-    }
     setSubmitting(true);
     try {
       const result = await api<LoginResponse>("/api/auth/google", {
         method: "POST",
         body: { idToken },
       });
-      finish(result, selectedRole);
+      enter(result);
     } catch (error) {
       const message =
         error instanceof ApiError
