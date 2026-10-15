@@ -7,11 +7,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
 
-/**
- * Applies schema + demo seed exactly once per Postgres volume.
- * Registered accounts and teacher-created data are preserved across API restarts.
- * Wiping the Docker volume ({@code docker compose down -v}) is the only routine that clears them.
- */
 @Component
 public class SchemaInitializer {
 
@@ -27,25 +22,21 @@ public class SchemaInitializer {
 
     @PostConstruct
     void init() {
+        applySchema();
         ensureMetaTable();
-        boolean userTableExists = relationExists("public.\"user\"");
-
-        if (!userTableExists) {
-            new ResourceDatabasePopulator(
-                    new ClassPathResource("schema.sql"),
-                    new ClassPathResource("seed.sql")
-            ).execute(dataSource);
-            markSeeded();
+        if (isSeeded()) {
             return;
         }
-
-        // Existing volume: never drop users. Seed demo rows only if never marked and bank is empty.
-        if (!isSeeded()) {
-            if (!hasAnyQuestions()) {
-                new ResourceDatabasePopulator(new ClassPathResource("seed.sql")).execute(dataSource);
-            }
-            markSeeded();
+        if (!hasAnyQuestions()) {
+            new ResourceDatabasePopulator(new ClassPathResource("seed.sql")).execute(dataSource);
         }
+        markSeeded();
+    }
+
+    private void applySchema() {
+        String existing = jdbc.queryForObject("SELECT to_regclass('public.question')::text", String.class);
+        String script = existing == null ? "schema.sql" : "schema-upgrade.sql";
+        new ResourceDatabasePopulator(new ClassPathResource(script)).execute(dataSource);
     }
 
     private void ensureMetaTable() {
@@ -60,15 +51,7 @@ public class SchemaInitializer {
         );
     }
 
-    private boolean relationExists(String regclassArg) {
-        String existing = jdbc.queryForObject("SELECT to_regclass(?)::text", String.class, regclassArg);
-        return existing != null;
-    }
-
     private boolean hasAnyQuestions() {
-        if (!relationExists("public.question")) {
-            return false;
-        }
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM question", Integer.class);
         return count != null && count > 0;
     }

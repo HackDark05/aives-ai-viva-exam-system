@@ -1,6 +1,7 @@
 package com.aives.teaching;
 
 import com.aives.teaching.DeskRecords.AttemptItem;
+import com.aives.teaching.DeskRecords.ExamListItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.RubricCriterionItem;
 import com.aives.teaching.DeskRecords.RubricDetailItem;
@@ -8,10 +9,13 @@ import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SessionItem;
 import com.aives.teaching.DeskRecords.SpeechSettings;
 import com.aives.teaching.DeskRecords.SubjectItem;
+import com.aives.teaching.DeskRecords.VivaTurnItem;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -235,11 +239,56 @@ public class JdbcDeskRepository {
         }
     }
 
-    public List<QuestionItem> questions(String status) {
-        if (status == null || status.isBlank()) {
-            return jdbc.query(QUESTION_SELECT + " ORDER BY q.created_at DESC", questionMapper());
+    @Transactional
+    public void insertRubric(
+            UUID id,
+            String subjectId,
+            String teacherId,
+            String name,
+            String description,
+            List<RubricCriterionItem> criteria
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO rubric (id, course_id, name, description, created_by)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?::uuid)
+                """,
+                id.toString(),
+                subjectId,
+                name,
+                description == null ? "" : description,
+                teacherId
+        );
+        int order = 0;
+        for (RubricCriterionItem criterion : criteria) {
+            jdbc.update(
+                    """
+                    INSERT INTO rubric_criterion (id, rubric_id, name, description, max_points, sort_order)
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?, ?)
+                    """,
+                    criterion.id(),
+                    id.toString(),
+                    criterion.name(),
+                    criterion.description() == null ? "" : criterion.description(),
+                    criterion.maxPoints(),
+                    order++
+            );
         }
-        return jdbc.query(QUESTION_SELECT + " WHERE q.status = ? ORDER BY q.created_at DESC", questionMapper(), status);
+    }
+
+    public List<QuestionItem> questions(String teacherId, String status) {
+        String owned = """
+                 JOIN course_assignment ca ON ca.course_id = q.course_id AND ca.teacher_id = ?::uuid
+                """;
+        if (status == null || status.isBlank()) {
+            return jdbc.query(QUESTION_SELECT + owned + " ORDER BY q.created_at DESC", questionMapper(), teacherId);
+        }
+        return jdbc.query(
+                QUESTION_SELECT + owned + " WHERE q.status = ? ORDER BY q.created_at DESC",
+                questionMapper(),
+                teacherId,
+                status
+        );
     }
 
     public void insertQuestion(
@@ -363,6 +412,78 @@ public class JdbcDeskRepository {
         );
     }
 
+    public List<ExamListItem> examsForTeacher(String teacherId) {
+        return jdbc.query(EXAM_SELECT + " WHERE e.teacher_id = ?::uuid ORDER BY e.created_at DESC", examMapper(), teacherId);
+    }
+
+    public ExamListItem examForTeacher(String examId, String teacherId) {
+        List<ExamListItem> rows = jdbc.query(
+                EXAM_SELECT + " WHERE e.id = ?::uuid AND e.teacher_id = ?::uuid",
+                examMapper(),
+                examId,
+                teacherId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public void renameExam(String examId, String teacherId, String title) {
+        jdbc.update(
+                """
+                UPDATE exam_session
+                SET title = ?
+                WHERE id = ?::uuid AND teacher_id = ?::uuid
+                """,
+                title,
+                examId,
+                teacherId
+        );
+    }
+
+    public void setExamStatus(String examId, String teacherId, String status) {
+        jdbc.update(
+                """
+                UPDATE exam_session
+                SET status = ?
+                WHERE id = ?::uuid AND teacher_id = ?::uuid
+                """,
+                status,
+                examId,
+                teacherId
+        );
+    }
+
+    public int attemptCount(String examId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM exam_attempt WHERE session_id = ?::uuid",
+                Integer.class,
+                examId
+        );
+        return count == null ? 0 : count;
+    }
+
+    @Transactional
+    public void replaceExamQuestions(String examId, List<String> questionIds) {
+        jdbc.update("DELETE FROM exam_session_question WHERE session_id = ?::uuid", examId);
+        int order = 1;
+        for (String questionId : questionIds) {
+            jdbc.update(
+                    """
+                    INSERT INTO exam_session_question (session_id, question_id, sort_order)
+                    VALUES (?::uuid, ?::uuid, ?)
+                    """,
+                    examId,
+                    questionId,
+                    order++
+            );
+        }
+    }
+
+    @Transactional
+    public void deleteExam(String examId) {
+        jdbc.update("DELETE FROM exam_session_question WHERE session_id = ?::uuid", examId);
+        jdbc.update("DELETE FROM exam_session WHERE id = ?::uuid", examId);
+    }
+
     public void linkQuestion(String examId, String questionId) {
         jdbc.update(
                 """
@@ -429,6 +550,152 @@ public class JdbcDeskRepository {
         );
     }
 
+    public String findAttemptId(String examId, String studentId) {
+        List<String> rows = jdbc.query(
+                "SELECT id::text FROM exam_attempt WHERE session_id = ?::uuid AND student_id = ?::uuid",
+                (rs, row) -> rs.getString(1),
+                examId,
+                studentId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public int nextTurnNo(String attemptId) {
+        Integer maxNo = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(turn_no), 0) FROM question_turn WHERE attempt_id = ?::uuid",
+                Integer.class,
+                attemptId
+        );
+        return (maxNo == null ? 0 : maxNo) + 1;
+    }
+
+    public void insertTurn(
+            UUID turnId,
+            String attemptId,
+            String questionId,
+            String parentTurnId,
+            int turnNo,
+            String turnType,
+            Integer followUpNo,
+            String questionText
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO question_turn (id, attempt_id, question_id, parent_turn_id, turn_no, turn_type, follow_up_no, question_text)
+                VALUES (?::uuid, ?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?)
+                """,
+                turnId.toString(),
+                attemptId,
+                questionId,
+                parentTurnId,
+                turnNo,
+                turnType,
+                followUpNo,
+                questionText
+        );
+    }
+
+    public void insertAnswer(
+            UUID answerId,
+            String turnId,
+            String transcript,
+            boolean needsFollowUp,
+            String followUpReason,
+            Integer durationMs,
+            int score,
+            boolean sufficient,
+            String feedback,
+            String evaluator
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO answer (id, turn_id, status, transcript, needs_follow_up, follow_up_reason, duration_ms,
+                                    score, is_sufficient, feedback, evaluator)
+                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (turn_id) DO UPDATE SET transcript = EXCLUDED.transcript,
+                    needs_follow_up = EXCLUDED.needs_follow_up, score = EXCLUDED.score,
+                    is_sufficient = EXCLUDED.is_sufficient, feedback = EXCLUDED.feedback,
+                    evaluator = EXCLUDED.evaluator
+                """,
+                answerId.toString(),
+                turnId,
+                transcript,
+                needsFollowUp,
+                followUpReason,
+                durationMs,
+                score,
+                sufficient,
+                feedback,
+                evaluator
+        );
+    }
+
+    /** Best stored answer score (0-100) per question, across the main and follow-up turns of an attempt. */
+    public Map<String, Double> bestAnswerScores(String attemptId) {
+        Map<String, Double> scores = new HashMap<>();
+        jdbc.query(
+                """
+                SELECT qt.question_id::text, MAX(ans.score)
+                FROM question_turn qt
+                JOIN answer ans ON ans.turn_id = qt.id
+                WHERE qt.attempt_id = ?::uuid AND ans.score IS NOT NULL
+                GROUP BY qt.question_id
+                """,
+                (RowCallbackHandler) rs -> scores.put(rs.getString(1), rs.getDouble(2)),
+                attemptId
+        );
+        return scores;
+    }
+
+    public String attemptStatus(String attemptId) {
+        List<String> rows = jdbc.query(
+                "SELECT status FROM exam_attempt WHERE id = ?::uuid",
+                (rs, row) -> rs.getString(1),
+                attemptId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public List<VivaTurnItem> turnsForAttempt(String attemptId) {
+        return jdbc.query(
+                """
+                SELECT qt.id::text, qt.question_id::text, qt.parent_turn_id::text,
+                       qt.turn_no, qt.turn_type, qt.question_text,
+                       COALESCE(ans.transcript, ''), COALESCE(ans.needs_follow_up, false),
+                       COALESCE(ans.follow_up_reason, '')
+                FROM question_turn qt
+                LEFT JOIN answer ans ON ans.turn_id = qt.id
+                WHERE qt.attempt_id = ?::uuid
+                ORDER BY qt.turn_no ASC
+                """,
+                (rs, row) -> new VivaTurnItem(
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getInt(4),
+                        rs.getString(5),
+                        rs.getString(6),
+                        rs.getString(7),
+                        rs.getBoolean(8),
+                        rs.getString(9)
+                ),
+                attemptId
+        );
+    }
+
+    /** Submits an attempt once; returns false when it had already been submitted. */
+    public boolean submitAttempt(String attemptId, int score) {
+        return jdbc.update(
+                """
+                UPDATE exam_attempt
+                SET score = ?, status = 'SUBMITTED', submitted_at = now()
+                WHERE id = ?::uuid AND status <> 'SUBMITTED'
+                """,
+                score,
+                attemptId
+        ) > 0;
+    }
+
     public List<AttemptItem> attemptsForTeacher(String teacherId) {
         return jdbc.query(
                 ATTEMPT_SELECT + " WHERE e.teacher_id = ?::uuid ORDER BY a.started_at DESC",
@@ -449,8 +716,8 @@ public class JdbcDeskRepository {
         return jdbc.query(ATTEMPT_SELECT + " ORDER BY a.started_at DESC", attemptMapper());
     }
 
-    public void setScore(String attemptId, String teacherId, int score) {
-        jdbc.update(
+    public int setScore(String attemptId, String teacherId, int score) {
+        return jdbc.update(
                 """
                 UPDATE exam_attempt a
                 SET score = ?
@@ -522,6 +789,25 @@ public class JdbcDeskRepository {
     private static String shortCode(String locale) {
         int dash = locale.indexOf('-');
         return dash < 0 ? locale : locale.substring(0, dash);
+    }
+
+    private static final String EXAM_SELECT = """
+            SELECT e.id::text, e.title, e.format, e.status, e.course_id::text, COALESCE(c.name, ''),
+                   (SELECT count(*) FROM exam_session_question esq WHERE esq.session_id = e.id)::int
+            FROM exam_session e
+            LEFT JOIN course c ON c.id = e.course_id
+            """;
+
+    private static RowMapper<ExamListItem> examMapper() {
+        return (rs, row) -> new ExamListItem(
+                rs.getString(1),
+                rs.getString(2),
+                rs.getString(3),
+                rs.getString(4),
+                rs.getString(5),
+                rs.getString(6),
+                rs.getInt(7)
+        );
     }
 
     private static RowMapper<QuestionItem> questionMapper() {

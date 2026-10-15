@@ -1,9 +1,12 @@
 package com.aives.teaching;
 
 import com.aives.rag.DocumentIngestionService;
-import com.aives.rag.DocumentIngestionService.IngestedDocument;
+import com.aives.rag.DocumentIngestionService.DocumentItem;
+import com.aives.rag.DocumentIngestionService.DocumentPreview;
 import com.aives.rag.GeneratedQuestionParser.Draft;
 import com.aives.rag.VivaQuestionGenerator;
+import com.aives.teaching.DeskRecords.ExamDetailItem;
+import com.aives.teaching.DeskRecords.ExamListItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.RubricCriterionItem;
 import com.aives.teaching.DeskRecords.RubricDetailItem;
@@ -18,6 +21,7 @@ import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -25,6 +29,7 @@ public class TeachingService {
 
     private static final Set<String> BLOOM = Set.of("REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE");
     private static final Set<String> FORMATS = Set.of("MULTIPLE_CHOICE", "ORAL");
+    private static final Set<String> EXAM_STATUSES = Set.of("IN_PROGRESS", "COMPLETED");
 
     private final JdbcDeskRepository desk;
     private final DocumentIngestionService ingestion;
@@ -60,14 +65,43 @@ public class TeachingService {
         return new SubjectItem(id.toString(), trimmedCode, trimmedName, List.of(teacher.id()));
     }
 
-    public List<IngestedDocument> documents(PublicUser teacher, String subjectId) {
+    public List<DocumentItem> documents(PublicUser teacher, String subjectId) {
         requireSubject(teacher.id(), subjectId);
         return ingestion.list(teacher.id(), subjectId);
     }
 
-    public IngestedDocument upload(PublicUser teacher, String subjectId, MultipartFile file) {
+    /** Stores the file and queues it for processing; poll {@link #document} for the result. */
+    public DocumentItem upload(PublicUser teacher, String subjectId, String topic, MultipartFile file) {
         requireSubject(teacher.id(), subjectId);
-        return ingestion.ingest(teacher.id(), subjectId, file);
+        return ingestion.upload(teacher.id(), subjectId, topic, file);
+    }
+
+    public DocumentItem document(PublicUser teacher, String documentId) {
+        requireDocument(teacher, documentId);
+        return ingestion.document(teacher.id(), documentId);
+    }
+
+    public DocumentPreview previewDocument(PublicUser teacher, String documentId) {
+        requireDocument(teacher, documentId);
+        return ingestion.preview(teacher.id(), documentId);
+    }
+
+    public DocumentItem updateDocumentTopic(PublicUser teacher, String documentId, String topic) {
+        requireDocument(teacher, documentId);
+        return ingestion.updateTopic(teacher.id(), documentId, topic);
+    }
+
+    public void deleteDocument(PublicUser teacher, String documentId) {
+        requireDocument(teacher, documentId);
+        ingestion.delete(teacher.id(), documentId);
+    }
+
+    private void requireDocument(PublicUser teacher, String documentId) {
+        String subjectId = ingestion.subjectIdOf(teacher.id(), documentId);
+        if (subjectId == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Document not found");
+        }
+        requireSubject(teacher.id(), subjectId);
     }
 
     public List<RubricItem> rubrics(PublicUser teacher) {
@@ -99,36 +133,31 @@ public class TeachingService {
         if (trimmedName.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Rubric name is required");
         }
-        if (criteria == null || criteria.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "At least one criterion is required");
-        }
-        List<RubricCriterionItem> normalized = new ArrayList<>();
-        int order = 0;
-        for (RubricCriterionItem criterion : criteria) {
-            String criterionName = criterion.name() == null ? "" : criterion.name().trim();
-            if (criterionName.isEmpty()) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Each criterion needs a name");
-            }
-            if (criterion.maxPoints() <= 0) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Each criterion needs a positive max score");
-            }
-            String id = criterion.id() == null || criterion.id().isBlank()
-                    ? UUID.randomUUID().toString()
-                    : criterion.id();
-            normalized.add(new RubricCriterionItem(
-                    id,
-                    criterionName,
-                    criterion.description() == null ? "" : criterion.description().trim(),
-                    criterion.maxPoints(),
-                    order++
-            ));
-        }
+        List<RubricCriterionItem> normalized = normalizeCriteria(criteria);
         desk.updateRubric(rubricId, trimmedName, description, normalized);
         return rubric(teacher, rubricId);
     }
 
-    public List<QuestionItem> questions(String status) {
-        return desk.questions(status);
+    public RubricDetailItem createRubric(
+            PublicUser teacher,
+            String subjectId,
+            String name,
+            String description,
+            List<RubricCriterionItem> criteria
+    ) {
+        requireSubject(teacher.id(), subjectId);
+        String trimmedName = name == null ? "" : name.trim();
+        if (trimmedName.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Rubric name is required");
+        }
+        List<RubricCriterionItem> normalized = normalizeCriteria(criteria);
+        UUID id = UUID.randomUUID();
+        desk.insertRubric(id, subjectId, teacher.id(), trimmedName, description, normalized);
+        return rubric(teacher, id.toString());
+    }
+
+    public List<QuestionItem> questions(PublicUser teacher, String status) {
+        return desk.questions(teacher.id(), status);
     }
 
     public QuestionItem create(
@@ -275,7 +304,8 @@ public class TeachingService {
         desk.deleteQuestion(id);
     }
 
-    public void startExam(
+    @Transactional
+    public ExamListItem startExam(
             PublicUser teacher,
             String title,
             String format,
@@ -283,18 +313,64 @@ public class TeachingService {
             List<String> questionIds
     ) {
         requireSubject(teacher.id(), subjectId);
+        if (title == null || title.isBlank() || title.trim().length() > 255) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Test title must be 1 to 255 characters");
+        }
         if (!FORMATS.contains(format)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Format must be multiple choice or oral");
         }
+        requireExamQuestions(subjectId, questionIds);
         UUID examId = UUID.randomUUID();
         desk.insertExam(examId, title.trim(), format, teacher.id(), subjectId);
-        for (String questionId : questionIds) {
-            QuestionItem question = desk.question(questionId);
-            if (question == null || !"APPROVED".equals(question.status())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Only approved questions can start a test");
-            }
-            desk.linkQuestion(examId.toString(), questionId);
+        desk.replaceExamQuestions(examId.toString(), questionIds);
+        return requireExam(teacher, examId.toString());
+    }
+
+    public List<ExamListItem> exams(PublicUser teacher) {
+        return desk.examsForTeacher(teacher.id());
+    }
+
+    public ExamDetailItem exam(PublicUser teacher, String examId) {
+        ExamListItem current = requireExam(teacher, examId);
+        return toDetail(current, desk.questionsOnExam(examId));
+    }
+
+    public ExamListItem renameExam(PublicUser teacher, String examId, String title) {
+        requireExam(teacher, examId);
+        String trimmed = title == null ? "" : title.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 255) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Test title must be 1 to 255 characters");
         }
+        desk.renameExam(examId, teacher.id(), trimmed);
+        return requireExam(teacher, examId);
+    }
+
+    public ExamListItem setExamStatus(PublicUser teacher, String examId, String status) {
+        requireExam(teacher, examId);
+        if (!EXAM_STATUSES.contains(status)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Status must be in progress or completed");
+        }
+        desk.setExamStatus(examId, teacher.id(), status);
+        return requireExam(teacher, examId);
+    }
+
+    @Transactional
+    public ExamDetailItem replaceExamQuestions(PublicUser teacher, String examId, List<String> questionIds) {
+        ExamListItem current = requireExam(teacher, examId);
+        if (desk.attemptCount(examId) > 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "Students have already entered this test");
+        }
+        requireExamQuestions(current.subjectId(), questionIds);
+        desk.replaceExamQuestions(examId, questionIds);
+        return toDetail(requireExam(teacher, examId), desk.questionsOnExam(examId));
+    }
+
+    public void deleteExam(PublicUser teacher, String examId) {
+        requireExam(teacher, examId);
+        if (desk.attemptCount(examId) > 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "Students have already entered this test");
+        }
+        desk.deleteExam(examId);
     }
 
     public List<DeskRecords.AttemptItem> scores(PublicUser teacher) {
@@ -305,7 +381,70 @@ public class TeachingService {
         if (score < 0 || score > 100) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Score must be between 0 and 100");
         }
-        desk.setScore(attemptId, teacher.id(), score);
+        if (desk.setScore(attemptId, teacher.id(), score) == 0) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Attempt not found");
+        }
+    }
+
+    private ExamListItem requireExam(PublicUser teacher, String examId) {
+        ExamListItem current = desk.examForTeacher(examId, teacher.id());
+        if (current == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Test not found");
+        }
+        requireSubject(teacher.id(), current.subjectId());
+        return current;
+    }
+
+    private void requireExamQuestions(String subjectId, List<String> questionIds) {
+        if (questionIds == null || questionIds.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Select at least one approved question");
+        }
+        for (String questionId : questionIds) {
+            QuestionItem question = desk.question(questionId);
+            if (question == null || !subjectId.equals(question.subjectId()) || !"APPROVED".equals(question.status())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Only approved questions from this subject can be used");
+            }
+        }
+    }
+
+    private static ExamDetailItem toDetail(ExamListItem exam, List<QuestionItem> questions) {
+        return new ExamDetailItem(
+                exam.id(),
+                exam.title(),
+                exam.format(),
+                exam.status(),
+                exam.subjectId(),
+                exam.subjectName(),
+                questions
+        );
+    }
+
+    private static List<RubricCriterionItem> normalizeCriteria(List<RubricCriterionItem> criteria) {
+        if (criteria == null || criteria.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "At least one criterion is required");
+        }
+        List<RubricCriterionItem> normalized = new ArrayList<>();
+        int order = 0;
+        for (RubricCriterionItem criterion : criteria) {
+            String criterionName = criterion.name() == null ? "" : criterion.name().trim();
+            if (criterionName.isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Each criterion needs a name");
+            }
+            if (criterion.maxPoints() <= 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Each criterion needs a positive max score");
+            }
+            String id = criterion.id() == null || criterion.id().isBlank()
+                    ? UUID.randomUUID().toString()
+                    : criterion.id();
+            normalized.add(new RubricCriterionItem(
+                    id,
+                    criterionName,
+                    criterion.description() == null ? "" : criterion.description().trim(),
+                    criterion.maxPoints(),
+                    order++
+            ));
+        }
+        return normalized;
     }
 
     private QuestionItem save(
