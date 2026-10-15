@@ -120,14 +120,25 @@ public final class DeskRecords {
     ) {
     }
 
+    /**
+     * @param evaluator      {@code AI} or {@code RULE_BASED}; rule-based grades are provisional
+     * @param fallbackReason why the AI grader was not used, or null when it was
+     * @param criteria       per-rubric-criterion points when the AI graded against the rubric
+     */
     public record VivaEvaluationItem(
             String turnId,
             String questionId,
             int score,
             boolean isSufficient,
             String feedback,
-            String followUpQuestion
+            String followUpQuestion,
+            String evaluator,
+            String fallbackReason,
+            List<CriterionScore> criteria
     ) {
+    }
+
+    public record CriterionScore(String name, double points, double maxPoints, String comment) {
     }
 
     public record VivaTurnItem(
