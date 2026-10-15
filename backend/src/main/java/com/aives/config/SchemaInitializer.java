@@ -23,6 +23,7 @@ public class SchemaInitializer {
     @PostConstruct
     void init() {
         ensureMetaTable();
+        ensureAnswerColumns();
         if (isSeeded()) {
             return;
         }
@@ -30,6 +31,26 @@ public class SchemaInitializer {
             new ResourceDatabasePopulator(new ClassPathResource("seed.sql")).execute(dataSource);
         }
         markSeeded();
+    }
+
+    /**
+     * Databases created from an older schema (or on a branch without these migrations) can lack the
+     * grading columns on {@code answer}; adding them idempotently keeps every machine's schema in step.
+     */
+    private void ensureAnswerColumns() {
+        String[] columns = {
+            "score numeric(5,2) CHECK (score IS NULL OR (score >= 0 AND score <= 100))",
+            "is_sufficient boolean",
+            "feedback text",
+            "evaluator varchar(20)",
+            "teacher_score numeric(5,2) CHECK (teacher_score IS NULL OR (teacher_score >= 0 AND teacher_score <= 100))",
+            "teacher_feedback text",
+            "graded_by uuid",
+            "graded_at timestamptz"
+        };
+        for (String column : columns) {
+            jdbc.execute("ALTER TABLE answer ADD COLUMN IF NOT EXISTS " + column);
+        }
     }
 
     private void ensureMetaTable() {

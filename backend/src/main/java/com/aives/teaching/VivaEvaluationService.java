@@ -3,7 +3,6 @@ package com.aives.teaching;
 import com.aives.ai.ChatCompletionClient;
 import com.aives.ai.ChatCompletionClient.AiUnavailableException;
 import com.aives.ai.ChatCompletionClient.Completion;
-import com.aives.teaching.AttemptScoring.WeightedQuestion;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.RubricCriterionItem;
 import com.aives.teaching.DeskRecords.RubricDetailItem;
@@ -133,15 +132,13 @@ public class VivaEvaluationService {
     @Transactional
     public SubmitAttemptResult submitExam(PublicUser student, String examId) {
         String attemptId = openAttempt(examId, student.id());
-        List<WeightedQuestion> questions = desk.questionsOnExam(examId).stream()
-                .map(question -> new WeightedQuestion(question.id(), question.maxScore()))
-                .toList();
+        List<String> questions = desk.questionsOnExam(examId).stream().map(QuestionItem::id).toList();
         Map<String, Double> best = desk.bestAnswerScores(attemptId);
         int finalScore = AttemptScoring.finalScore(questions, best);
         if (!desk.submitAttempt(attemptId, finalScore)) {
             throw new ApiException(HttpStatus.CONFLICT, "This exam has already been submitted");
         }
-        int answered = (int) questions.stream().filter(question -> best.containsKey(question.questionId())).count();
+        int answered = (int) questions.stream().filter(best::containsKey).count();
         return new SubmitAttemptResult(finalScore, answered, questions.size());
     }
 
