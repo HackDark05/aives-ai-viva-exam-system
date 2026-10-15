@@ -157,9 +157,10 @@ export function TeacherTests() {
       return;
     }
     let cancelled = false;
-    api<{ id: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, { auth: true })
+    api<{ id: string; status: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, { auth: true })
       .then((docs) => {
-        if (!cancelled) setMaterialCount(docs.length);
+        // Materials still processing (or failed) cannot be used for drafting yet.
+        if (!cancelled) setMaterialCount(docs.filter((doc) => doc.status === "DONE").length);
       })
       .catch(() => {
         if (!cancelled) setMaterialCount(0);
