@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowRightIcon, Loader2Icon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 import { MaterialDropzone } from "@/components/teacher/material-dropzone";
+import { MaterialLibrary, type Material } from "@/components/teacher/material-library";
 import { RubricFieldLabel } from "@/components/teacher/rubric-field-label";
 import { TeacherPageHeader } from "@/components/teacher/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -44,7 +44,6 @@ type Question = {
 const BLOOM = ["REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE"] as const;
 
 export function TeacherBank() {
-  const router = useRouter();
   const { t, locale } = useLocale();
   const [loading, setLoading] = useState(true);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -58,7 +57,9 @@ export function TeacherBank() {
   const [importText, setImportText] = useState("");
   const [subjectCode, setSubjectCode] = useState("");
   const [subjectName, setSubjectName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [materialTopic, setMaterialTopic] = useState("");
+  const [libraryKey, setLibraryKey] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [materialCount, setMaterialCount] = useState<number | null>(null);
 
@@ -71,23 +72,10 @@ export function TeacherBank() {
     setRubricId((current) => resolveRubricIdForSubject(rubrics, subjectId, current));
   }, [rubrics, subjectId]);
 
-  useEffect(() => {
-    if (!subjectId) {
-      setMaterialCount(null);
-      return;
-    }
-    let cancelled = false;
-    api<{ id: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, { auth: true })
-      .then((docs) => {
-        if (!cancelled) setMaterialCount(docs.length);
-      })
-      .catch(() => {
-        if (!cancelled) setMaterialCount(0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [subjectId]);
+  // Only fully processed materials can be used to draft questions.
+  const onMaterialsChange = useCallback((materials: Material[]) => {
+    setMaterialCount(materials.filter((material) => material.status === "DONE").length);
+  }, []);
 
   const draftFromAiHref = subjectId
     ? `/teacher/tests?subjectId=${encodeURIComponent(subjectId)}#draft-from-ai`
@@ -178,21 +166,29 @@ export function TeacherBank() {
 
   async function onMaterial(event: FormEvent) {
     event.preventDefault();
-    if (!file || !subjectId) return;
-    const body = new FormData();
-    body.set("subjectId", subjectId);
-    body.set("file", file);
+    if (files.length === 0 || !subjectId) return;
     setUploading(true);
-    try {
-      await api("/api/teaching/documents", { method: "POST", auth: true, body });
-      setFile(null);
-      toast.success(t("teacher.bank.materialAddedToList"));
-      router.push(draftFromAiHref);
-    } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : t("teacher.bank.loadError"));
-    } finally {
-      setUploading(false);
+    // Upload one at a time so each file gets its own result; processing continues in the background.
+    const failed: File[] = [];
+    for (const file of files) {
+      const body = new FormData();
+      body.set("subjectId", subjectId);
+      if (materialTopic.trim()) body.set("topic", materialTopic.trim());
+      body.set("file", file);
+      try {
+        await api("/api/teaching/documents", { method: "POST", auth: true, body });
+      } catch (error) {
+        failed.push(file);
+        toast.error(`${file.name}: ${error instanceof ApiError ? error.message : t("teacher.bank.loadError")}`);
+      }
     }
+    const queued = files.length - failed.length;
+    if (queued > 0) {
+      toast.success(t("teacher.bank.materialQueued", { count: String(queued) }));
+    }
+    setFiles(failed);
+    setLibraryKey((key) => key + 1);
+    setUploading(false);
   }
 
   async function onCreateSubject(event: FormEvent) {
@@ -317,18 +313,29 @@ export function TeacherBank() {
             </Field>
             <MaterialDropzone
               id="material-file"
-              file={file}
-              onFileChange={setFile}
+              files={files}
+              onFilesChange={setFiles}
               disabled={!subjectId || uploading}
               label={t("teacher.bank.dropzoneLabel")}
               dropTitle={t("teacher.bank.dropzoneTitle")}
               dropHint={t("teacher.bank.dropzoneHint")}
               dropActive={t("teacher.bank.dropzoneActive")}
               invalidTypeMessage={t("teacher.bank.dropzoneInvalidType")}
-              selectedLabel={(name) => t("teacher.bank.dropzoneSelected", { name })}
+              tooLargeMessage={(name) => t("teacher.bank.dropzoneTooLarge", { name })}
+              removeLabel={(name) => t("teacher.bank.dropzoneRemove", { name })}
             />
+            <Field>
+              <FieldLabel htmlFor="material-topic">{t("teacher.bank.materialTopic")}</FieldLabel>
+              <Input
+                id="material-topic"
+                value={materialTopic}
+                maxLength={255}
+                onChange={(event) => setMaterialTopic(event.target.value)}
+                placeholder={t("teacher.bank.materialTopicPlaceholder")}
+              />
+            </Field>
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={!subjectId || !file || uploading}>
+              <Button type="submit" disabled={!subjectId || files.length === 0 || uploading}>
                 {uploading ? t("teacher.common.loading") : t("teacher.bank.importMaterial")}
               </Button>
               {subjectId && materialCount !== null && materialCount > 0 ? (
@@ -350,6 +357,9 @@ export function TeacherBank() {
               <p className="text-xs text-muted-foreground">{t("teacher.bank.draftAiNeedsMaterial")}</p>
             ) : null}
           </form>
+          {subjectId ? (
+            <MaterialLibrary subjectId={subjectId} refreshKey={libraryKey} onChange={onMaterialsChange} />
+          ) : null}
         </CardContent>
       </Card>
 
