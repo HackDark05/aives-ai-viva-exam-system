@@ -630,15 +630,20 @@ public class JdbcDeskRepository {
         );
     }
 
-    /** Best stored answer score (0-100) per question, across the main and follow-up turns of an attempt. */
+    /**
+     * Score (0-100) per question across the main and follow-up turns of an attempt. When the teacher has
+     * graded any turn of a question, the teacher's best mark wins; otherwise the best AI score is used.
+     */
     public Map<String, Double> bestAnswerScores(String attemptId) {
         Map<String, Double> scores = new HashMap<>();
         jdbc.query(
                 """
-                SELECT qt.question_id::text, MAX(ans.score)
+                SELECT qt.question_id::text,
+                       CASE WHEN bool_or(ans.teacher_score IS NOT NULL)
+                            THEN MAX(ans.teacher_score) ELSE MAX(ans.score) END
                 FROM question_turn qt
                 JOIN answer ans ON ans.turn_id = qt.id
-                WHERE qt.attempt_id = ?::uuid AND ans.score IS NOT NULL
+                WHERE qt.attempt_id = ?::uuid AND (ans.score IS NOT NULL OR ans.teacher_score IS NOT NULL)
                 GROUP BY qt.question_id
                 """,
                 (RowCallbackHandler) rs -> scores.put(rs.getString(1), rs.getDouble(2)),

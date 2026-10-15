@@ -16,6 +16,13 @@ ALTER TABLE answer ADD COLUMN IF NOT EXISTS evaluator varchar(20);
 ALTER TABLE answer DROP CONSTRAINT IF EXISTS ck_answer_score;
 ALTER TABLE answer ADD CONSTRAINT ck_answer_score CHECK (score IS NULL OR (score >= 0 AND score <= 100));
 
+ALTER TABLE answer ADD COLUMN IF NOT EXISTS teacher_score numeric(5,2);
+ALTER TABLE answer ADD COLUMN IF NOT EXISTS teacher_feedback text;
+ALTER TABLE answer ADD COLUMN IF NOT EXISTS graded_by uuid;
+ALTER TABLE answer ADD COLUMN IF NOT EXISTS graded_at timestamptz;
+ALTER TABLE answer DROP CONSTRAINT IF EXISTS ck_answer_teacher_score;
+ALTER TABLE answer ADD CONSTRAINT ck_answer_teacher_score CHECK (teacher_score IS NULL OR (teacher_score >= 0 AND teacher_score <= 100));
+
 ALTER TABLE course_document ADD COLUMN IF NOT EXISTS content_hash varchar(64);
 ALTER TABLE course_document ADD COLUMN IF NOT EXISTS page_count int;
 ALTER TABLE course_document ADD COLUMN IF NOT EXISTS processed_at timestamptz;
