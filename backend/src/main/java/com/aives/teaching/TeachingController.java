@@ -1,6 +1,7 @@
 package com.aives.teaching;
 
-import com.aives.rag.DocumentIngestionService.IngestedDocument;
+import com.aives.rag.DocumentIngestionService.DocumentItem;
+import com.aives.rag.DocumentIngestionService.DocumentPreview;
 import com.aives.teaching.DeskRecords.AttemptItem;
 import com.aives.teaching.DeskRecords.ExamDetailItem;
 import com.aives.teaching.DeskRecords.ExamListItem;
@@ -79,20 +80,48 @@ public class TeachingController {
     }
 
     @GetMapping("/documents")
-    public List<IngestedDocument> documents(
+    public List<DocumentItem> documents(
             @AuthenticationPrincipal PublicUser teacher,
             @RequestParam String subjectId
     ) {
         return teaching.documents(teacher, subjectId);
     }
 
+    /** Accepts the file and processes it in the background; the returned document starts as PENDING. */
     @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public IngestedDocument upload(
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DocumentItem upload(
             @AuthenticationPrincipal PublicUser teacher,
             @RequestParam String subjectId,
+            @RequestParam(required = false) String topic,
             @RequestParam MultipartFile file
     ) {
-        return teaching.upload(teacher, subjectId, file);
+        return teaching.upload(teacher, subjectId, topic, file);
+    }
+
+    @GetMapping("/documents/{id}")
+    public DocumentItem document(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        return teaching.document(teacher, id);
+    }
+
+    @GetMapping("/documents/{id}/preview")
+    public DocumentPreview previewDocument(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id
+    ) {
+        return teaching.previewDocument(teacher, id);
+    }
+
+    @PatchMapping("/documents/{id}")
+    public DocumentItem updateDocument(
+            @AuthenticationPrincipal PublicUser teacher,
+            @PathVariable String id,
+            @Valid @RequestBody DocumentTopicRequest request
+    ) {
+        return teaching.updateDocumentTopic(teacher, id, request.topic());
     }
 
     @DeleteMapping("/documents/{id}")
@@ -258,6 +287,9 @@ public class TeachingController {
             @Valid @RequestBody ScoreRequest request
     ) {
         teaching.score(teacher, id, request.score());
+    }
+
+    public record DocumentTopicRequest(@NotBlank @Size(max = 255) String topic) {
     }
 
     public record SubjectRequest(@NotBlank String code, @NotBlank String name) {
