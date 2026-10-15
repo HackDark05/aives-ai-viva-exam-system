@@ -1,4 +1,4 @@
-import type { Messages } from "./en";
+import { en, type Messages } from "./en";
 
 export const vi: Messages = {
   history: {
@@ -488,4 +488,5 @@ export const vi: Messages = {
       title: "Kết quả của bạn",
     },
   },
+  admin: en.admin,
 };
