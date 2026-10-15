@@ -30,6 +30,13 @@ export const en = {
       total_questions: "Total Questions",
       correct_answers: "Correct Answers",
     },
+    
+  },
+  
+  student_profile: {
+    title: "Student Profile",
+    edit: "Edit Profile",
+    delete_account: "Delete Account",
   },
   common: {
     signOut: "Sign out",
