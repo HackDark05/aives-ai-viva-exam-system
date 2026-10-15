@@ -9,10 +9,13 @@ import com.aives.teaching.DeskRecords.RubricItem;
 import com.aives.teaching.DeskRecords.SessionItem;
 import com.aives.teaching.DeskRecords.SpeechSettings;
 import com.aives.teaching.DeskRecords.SubjectItem;
+import com.aives.teaching.DeskRecords.VivaTurnItem;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -545,6 +548,152 @@ public class JdbcDeskRepository {
                 examId,
                 studentId
         );
+    }
+
+    public String findAttemptId(String examId, String studentId) {
+        List<String> rows = jdbc.query(
+                "SELECT id::text FROM exam_attempt WHERE session_id = ?::uuid AND student_id = ?::uuid",
+                (rs, row) -> rs.getString(1),
+                examId,
+                studentId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public int nextTurnNo(String attemptId) {
+        Integer maxNo = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(turn_no), 0) FROM question_turn WHERE attempt_id = ?::uuid",
+                Integer.class,
+                attemptId
+        );
+        return (maxNo == null ? 0 : maxNo) + 1;
+    }
+
+    public void insertTurn(
+            UUID turnId,
+            String attemptId,
+            String questionId,
+            String parentTurnId,
+            int turnNo,
+            String turnType,
+            Integer followUpNo,
+            String questionText
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO question_turn (id, attempt_id, question_id, parent_turn_id, turn_no, turn_type, follow_up_no, question_text)
+                VALUES (?::uuid, ?::uuid, ?::uuid, ?::uuid, ?, ?, ?, ?)
+                """,
+                turnId.toString(),
+                attemptId,
+                questionId,
+                parentTurnId,
+                turnNo,
+                turnType,
+                followUpNo,
+                questionText
+        );
+    }
+
+    public void insertAnswer(
+            UUID answerId,
+            String turnId,
+            String transcript,
+            boolean needsFollowUp,
+            String followUpReason,
+            Integer durationMs,
+            int score,
+            boolean sufficient,
+            String feedback,
+            String evaluator
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO answer (id, turn_id, status, transcript, needs_follow_up, follow_up_reason, duration_ms,
+                                    score, is_sufficient, feedback, evaluator)
+                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (turn_id) DO UPDATE SET transcript = EXCLUDED.transcript,
+                    needs_follow_up = EXCLUDED.needs_follow_up, score = EXCLUDED.score,
+                    is_sufficient = EXCLUDED.is_sufficient, feedback = EXCLUDED.feedback,
+                    evaluator = EXCLUDED.evaluator
+                """,
+                answerId.toString(),
+                turnId,
+                transcript,
+                needsFollowUp,
+                followUpReason,
+                durationMs,
+                score,
+                sufficient,
+                feedback,
+                evaluator
+        );
+    }
+
+    /** Best stored answer score (0-100) per question, across the main and follow-up turns of an attempt. */
+    public Map<String, Double> bestAnswerScores(String attemptId) {
+        Map<String, Double> scores = new HashMap<>();
+        jdbc.query(
+                """
+                SELECT qt.question_id::text, MAX(ans.score)
+                FROM question_turn qt
+                JOIN answer ans ON ans.turn_id = qt.id
+                WHERE qt.attempt_id = ?::uuid AND ans.score IS NOT NULL
+                GROUP BY qt.question_id
+                """,
+                (RowCallbackHandler) rs -> scores.put(rs.getString(1), rs.getDouble(2)),
+                attemptId
+        );
+        return scores;
+    }
+
+    public String attemptStatus(String attemptId) {
+        List<String> rows = jdbc.query(
+                "SELECT status FROM exam_attempt WHERE id = ?::uuid",
+                (rs, row) -> rs.getString(1),
+                attemptId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    public List<VivaTurnItem> turnsForAttempt(String attemptId) {
+        return jdbc.query(
+                """
+                SELECT qt.id::text, qt.question_id::text, qt.parent_turn_id::text,
+                       qt.turn_no, qt.turn_type, qt.question_text,
+                       COALESCE(ans.transcript, ''), COALESCE(ans.needs_follow_up, false),
+                       COALESCE(ans.follow_up_reason, '')
+                FROM question_turn qt
+                LEFT JOIN answer ans ON ans.turn_id = qt.id
+                WHERE qt.attempt_id = ?::uuid
+                ORDER BY qt.turn_no ASC
+                """,
+                (rs, row) -> new VivaTurnItem(
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getInt(4),
+                        rs.getString(5),
+                        rs.getString(6),
+                        rs.getString(7),
+                        rs.getBoolean(8),
+                        rs.getString(9)
+                ),
+                attemptId
+        );
+    }
+
+    /** Submits an attempt once; returns false when it had already been submitted. */
+    public boolean submitAttempt(String attemptId, int score) {
+        return jdbc.update(
+                """
+                UPDATE exam_attempt
+                SET score = ?, status = 'SUBMITTED', submitted_at = now()
+                WHERE id = ?::uuid AND status <> 'SUBMITTED'
+                """,
+                score,
+                attemptId
+        ) > 0;
     }
 
     public List<AttemptItem> attemptsForTeacher(String teacherId) {

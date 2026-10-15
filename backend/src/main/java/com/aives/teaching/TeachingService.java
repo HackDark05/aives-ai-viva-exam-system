@@ -1,7 +1,8 @@
 package com.aives.teaching;
 
 import com.aives.rag.DocumentIngestionService;
-import com.aives.rag.DocumentIngestionService.IngestedDocument;
+import com.aives.rag.DocumentIngestionService.DocumentItem;
+import com.aives.rag.DocumentIngestionService.DocumentPreview;
 import com.aives.rag.GeneratedQuestionParser.Draft;
 import com.aives.rag.VivaQuestionGenerator;
 import com.aives.teaching.DeskRecords.ExamDetailItem;
@@ -64,23 +65,43 @@ public class TeachingService {
         return new SubjectItem(id.toString(), trimmedCode, trimmedName, List.of(teacher.id()));
     }
 
-    public List<IngestedDocument> documents(PublicUser teacher, String subjectId) {
+    public List<DocumentItem> documents(PublicUser teacher, String subjectId) {
         requireSubject(teacher.id(), subjectId);
         return ingestion.list(teacher.id(), subjectId);
     }
 
-    public IngestedDocument upload(PublicUser teacher, String subjectId, MultipartFile file) {
+    /** Stores the file and queues it for processing; poll {@link #document} for the result. */
+    public DocumentItem upload(PublicUser teacher, String subjectId, String topic, MultipartFile file) {
         requireSubject(teacher.id(), subjectId);
-        return ingestion.ingest(teacher.id(), subjectId, file);
+        return ingestion.upload(teacher.id(), subjectId, topic, file);
+    }
+
+    public DocumentItem document(PublicUser teacher, String documentId) {
+        requireDocument(teacher, documentId);
+        return ingestion.document(teacher.id(), documentId);
+    }
+
+    public DocumentPreview previewDocument(PublicUser teacher, String documentId) {
+        requireDocument(teacher, documentId);
+        return ingestion.preview(teacher.id(), documentId);
+    }
+
+    public DocumentItem updateDocumentTopic(PublicUser teacher, String documentId, String topic) {
+        requireDocument(teacher, documentId);
+        return ingestion.updateTopic(teacher.id(), documentId, topic);
     }
 
     public void deleteDocument(PublicUser teacher, String documentId) {
+        requireDocument(teacher, documentId);
+        ingestion.delete(teacher.id(), documentId);
+    }
+
+    private void requireDocument(PublicUser teacher, String documentId) {
         String subjectId = ingestion.subjectIdOf(teacher.id(), documentId);
         if (subjectId == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Document not found");
         }
         requireSubject(teacher.id(), subjectId);
-        ingestion.delete(teacher.id(), documentId);
     }
 
     public List<RubricItem> rubrics(PublicUser teacher) {

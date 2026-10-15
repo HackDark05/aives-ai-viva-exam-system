@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Loader2Icon, LogOutIcon } from "lucide-react";
+import { Loader2Icon, LogOutIcon, UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/brand-mark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,7 +21,7 @@ import { useLocale, useRoleLabel } from "@/lib/i18n/locale-provider";
 import { homeForRole } from "@/lib/role-home";
 import { useCurrentUser } from "@/lib/use-current-user";
 import type { Role } from "@/lib/types";
-import { cn } from "cn";
+import { cn } from "@/lib/utils"; // Chú ý: đảm bảo đường dẫn import cn chính xác
 
 export function PortalShell({
   role,
@@ -39,6 +39,9 @@ export function PortalShell({
   const { user, signOut } = useCurrentUser();
   const { t } = useLocale();
   const roleLabel = useRoleLabel(user?.role ?? role);
+
+  // Đường dẫn đến trang Profile tương ứng với Role (VD: /student/profile)
+  const profileHref = `/${(user?.role ?? role).toLowerCase()}/profile`;
 
   useEffect(() => {
     if (user && user.role !== role) {
@@ -69,31 +72,40 @@ export function PortalShell({
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">
           <LanguageSwitch />
-        <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex h-10 items-center gap-2 rounded-lg px-2 text-sm hover:bg-muted">
-            <Avatar size="sm">
-              <AvatarFallback>
-                {user.name.slice(0, 1).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <span className="hidden sm:inline">{user.name}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-56">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="font-normal">
-                <p className="font-medium">{user.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {roleLabel}
-                </p>
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={signOut}>
-              <LogOutIcon />
-              {t("common.signOut")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-10 items-center gap-2 rounded-lg px-2 text-sm hover:bg-muted">
+              <Avatar size="sm">
+                <AvatarFallback>
+                  {user.name.slice(0, 1).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="hidden sm:inline">{user.name}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="font-normal">
+                  <p className="font-medium">{user.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {roleLabel}
+                  </p>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem>
+                  <Link href={profileHref} className="cursor-pointer">
+                    <UserIcon className="mr-2 size-4" />
+                    {t("nav.student.profile") || t("student_profile.edit") || "My Profile"}
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={signOut} className="cursor-pointer">
+                <LogOutIcon className="mr-2 size-4" />
+                {t("common.signOut")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
