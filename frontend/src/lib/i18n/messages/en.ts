@@ -389,6 +389,7 @@ export const en = {
       nextQuestion: "Next question",
       finishExam: "Submit & Complete",
       examFinished: "Viva exam submitted successfully!",
+      examFinishedWithScore: "Exam submitted. Score: {score}/100 ({answered}/{total} questions answered).",
       aiFeedback: "AI Feedback:",
       voiceSelect: "ZeroTTS Voice:",
       detectedLangVi: "Vietnamese question → Vietnamese voice",

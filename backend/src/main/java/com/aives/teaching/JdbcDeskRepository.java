@@ -10,10 +10,12 @@ import com.aives.teaching.DeskRecords.SessionItem;
 import com.aives.teaching.DeskRecords.SpeechSettings;
 import com.aives.teaching.DeskRecords.SubjectItem;
 import com.aives.teaching.DeskRecords.VivaTurnItem;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -599,21 +601,56 @@ public class JdbcDeskRepository {
             String transcript,
             boolean needsFollowUp,
             String followUpReason,
-            Integer durationMs
+            Integer durationMs,
+            int score,
+            boolean sufficient,
+            String feedback
     ) {
         jdbc.update(
                 """
-                INSERT INTO answer (id, turn_id, status, transcript, needs_follow_up, follow_up_reason, duration_ms)
-                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?)
-                ON CONFLICT (turn_id) DO UPDATE SET transcript = EXCLUDED.transcript, needs_follow_up = EXCLUDED.needs_follow_up
+                INSERT INTO answer (id, turn_id, status, transcript, needs_follow_up, follow_up_reason, duration_ms,
+                                    score, is_sufficient, feedback)
+                VALUES (?::uuid, ?::uuid, 'ANSWERED', ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (turn_id) DO UPDATE SET transcript = EXCLUDED.transcript,
+                    needs_follow_up = EXCLUDED.needs_follow_up, score = EXCLUDED.score,
+                    is_sufficient = EXCLUDED.is_sufficient, feedback = EXCLUDED.feedback
                 """,
                 answerId.toString(),
                 turnId,
                 transcript,
                 needsFollowUp,
                 followUpReason,
-                durationMs
+                durationMs,
+                score,
+                sufficient,
+                feedback
         );
+    }
+
+    /** Best stored answer score (0-100) per question, across the main and follow-up turns of an attempt. */
+    public Map<String, Double> bestAnswerScores(String attemptId) {
+        Map<String, Double> scores = new HashMap<>();
+        jdbc.query(
+                """
+                SELECT qt.question_id::text, MAX(ans.score)
+                FROM question_turn qt
+                JOIN answer ans ON ans.turn_id = qt.id
+                WHERE qt.attempt_id = ?::uuid AND ans.score IS NOT NULL
+                GROUP BY qt.question_id
+                """,
+                (RowCallbackHandler) rs -> scores.put(rs.getString(1), rs.getDouble(2)),
+                attemptId
+        );
+        return scores;
+    }
+
+    public String attemptStatus(String attemptId) {
+        List<String> rows = jdbc.query(
+                "SELECT status FROM exam_attempt WHERE id = ?::uuid",
+                (rs, row) -> rs.getString(1),
+                attemptId
+        );
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 
     public List<VivaTurnItem> turnsForAttempt(String attemptId) {
@@ -643,16 +680,17 @@ public class JdbcDeskRepository {
         );
     }
 
-    public void submitAttempt(String attemptId, int score) {
-        jdbc.update(
+    /** Submits an attempt once; returns false when it had already been submitted. */
+    public boolean submitAttempt(String attemptId, int score) {
+        return jdbc.update(
                 """
                 UPDATE exam_attempt
                 SET score = ?, status = 'SUBMITTED', submitted_at = now()
-                WHERE id = ?::uuid
+                WHERE id = ?::uuid AND status <> 'SUBMITTED'
                 """,
                 score,
                 attemptId
-        );
+        ) > 0;
     }
 
     public List<AttemptItem> attemptsForTeacher(String teacherId) {

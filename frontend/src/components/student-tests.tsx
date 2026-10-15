@@ -54,6 +54,12 @@ type EvaluationItem = {
   followUpQuestion?: string | null;
 };
 
+type SubmitResult = {
+  score: number;
+  answeredQuestions: number;
+  totalQuestions: number;
+};
+
 export function StudentTests() {
   const { t } = useLocale();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -310,20 +316,19 @@ function VivaExamRoom({
   async function handleFinishExam() {
     setSubmittingExam(true);
     try {
-      // Tính điểm trung bình các câu đã làm
-      const scores = Object.values(evaluations).map((e) => e.score);
-      const avgScore =
-        scores.length > 0
-          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-          : 80;
-
-      await api(`/api/student/exams/${session.id}/submit`, {
+      // Điểm cuối cùng do server tính từ các câu trả lời đã lưu.
+      const result = await api<SubmitResult>(`/api/student/exams/${session.id}/submit`, {
         method: "POST",
         auth: true,
-        body: { score: avgScore },
       });
 
-      toast.success(t("student.tests.examFinished"));
+      toast.success(
+        t("student.tests.examFinishedWithScore", {
+          score: String(result.score),
+          answered: String(result.answeredQuestions),
+          total: String(result.totalQuestions),
+        }),
+      );
       onComplete();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Lỗi khi nộp bài thi.");
