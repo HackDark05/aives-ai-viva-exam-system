@@ -32,6 +32,13 @@ export const vi: Messages = {
       total_questions: "Tổng số câu",
       correct_answers: "Số câu đúng",
     },
+    
+  },
+  // Bổ sung phần student_profile tiếng Việt
+  student_profile: {
+    title: "Hồ sơ sinh viên",
+    edit: "Chỉnh sửa hồ sơ",
+    delete_account: "Xóa tài khoản",
   },
   common: {
     signOut: "Đăng xuất",
