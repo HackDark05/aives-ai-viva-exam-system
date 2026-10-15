@@ -375,7 +375,7 @@ export function TeacherTests() {
           {materialCount === 0 && subjectId ? (
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               {t("teacher.tests.noMaterialForSubject")}{" "}
-              <Link href="/teacher/bank" className="font-medium underline underline-offset-2">
+              <Link href="/teacher/subjects" className="font-medium underline underline-offset-2">
                 {t("teacher.tests.importMaterialLink")}
               </Link>
             </p>

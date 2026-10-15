@@ -61,6 +61,7 @@ export const vi: Messages = {
     teacher: {
       overview: "Tổng quan",
       exams: "Kỳ thi",
+      createSubject: "Tạo môn học",
       bank: "Ngân hàng câu hỏi",
       scores: "Kết quả",
     },
@@ -138,6 +139,7 @@ export const vi: Messages = {
     pages: {
       overview: "Tổng quan",
       exams: "Kỳ thi",
+      createSubject: "Tạo môn học",
       bank: "Ngân hàng câu hỏi",
       rubrics: "Rubric",
       scores: "Kết quả",
@@ -207,11 +209,11 @@ export const vi: Messages = {
       openBank: "Mở ngân hàng câu hỏi",
       openScores: "Chấm kết quả",
       subjects: "Môn được giao",
-      noSubjects: "Tạo môn học trong ngân hàng câu hỏi để bắt đầu.",
+      noSubjects: "Tạo môn học ở mục Tạo môn học để bắt đầu.",
       moreSubjects: "+{count} môn khác",
       quickActions: "Thao tác nhanh",
       actionStartExam: "Mở ca thi mới",
-      actionManageBank: "Quản lý câu hỏi & tài liệu",
+      actionManageBank: "Quản lý câu hỏi",
       recentResults: "Kết quả gần đây",
       recentResultsDesc: "Các lượt thi sinh viên mới nhất.",
       noResults: "Chưa có lượt thi nào.",
@@ -220,7 +222,7 @@ export const vi: Messages = {
     bank: {
       eyebrow: "Ngân hàng câu hỏi",
       title: "Quản lý câu hỏi viva",
-      lead: "Nhập tài liệu môn học, viết hoặc import câu hỏi miệng, gắn mức Bloom và rubric. Bản nháp AI được duyệt tại đây trước khi dùng trong kỳ thi.",
+      lead: "Viết hoặc import câu hỏi miệng, gắn mức Bloom và rubric. Bản nháp AI được duyệt tại đây trước khi dùng trong kỳ thi.",
       subjectTitle: "Môn học & tài liệu",
       subjectDesc:
         "Tạo môn học, rồi import PDF, DOCX hoặc PPTX. File được lập chỉ mục cho RAG khi soạn câu hỏi.",
@@ -267,14 +269,13 @@ export const vi: Messages = {
       addToBank: "Thêm vào ngân hàng",
       importLines: "Import theo dòng",
       officialTitle: "Danh sách câu hỏi",
-      officialDesc:
-        "Tài liệu đã import và câu hỏi trong ngân hàng. Duyệt bản nháp AI trước khi dùng trong kỳ thi.",
+      officialDesc: "Duyệt, sửa hoặc từ chối bản nháp AI trước khi dùng trong kỳ thi.",
       bySubjectDesc: "Mở mã môn để xem, sửa hoặc xóa câu hỏi của môn đó.",
       subjectCodesTitle: "Môn học",
       subjectCodesDesc: "Chỉ hiện mã môn. Mở một mã để quản lý câu hỏi.",
       questionCount: "{count} câu hỏi",
       emptyForSubject: "Chưa có câu hỏi cho môn này.",
-      noSubjectsInList: "Chưa có môn học. Hãy tạo môn trong ngân hàng câu hỏi trước.",
+      noSubjectsInList: "Chưa có môn học. Hãy tạo môn ở mục Tạo môn học trước.",
       editQuestion: "Sửa",
       deleteQuestion: "Xóa",
       deleteConfirmTitle: "Xóa câu hỏi này?",
@@ -344,8 +345,8 @@ export const vi: Messages = {
       chooseSubjectRubric: "Chọn môn học và rubric trước.",
       noRubricForSubject: "Môn này chưa có rubric. Hãy chọn môn khác hoặc nhờ quản trị viên gán rubric.",
       noMaterialForSubject:
-        "Chưa có tài liệu cho môn này. Hãy import PDF/DOCX/PPTX trong Ngân hàng câu hỏi trước khi soạn.",
-      importMaterialLink: "Mở ngân hàng câu hỏi",
+        "Chưa có tài liệu cho môn này. Hãy import PDF/DOCX/PPTX ở mục Tạo môn học trước khi soạn.",
+      importMaterialLink: "Mở Tạo môn học",
       generateHint: "Cần tài liệu đã import, rubric đúng môn và (nếu dùng AI) cấu hình AI trên server.",
     },
     rubrics: {
