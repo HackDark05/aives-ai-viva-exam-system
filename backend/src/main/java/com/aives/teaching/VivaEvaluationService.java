@@ -67,7 +67,8 @@ public class VivaEvaluationService {
                 durationMs,
                 evaluation.score(),
                 evaluation.isSufficient(),
-                evaluation.feedback()
+                evaluation.feedback(),
+                evaluation.evaluator()
         );
 
         return evaluation;
@@ -110,7 +111,8 @@ public class VivaEvaluationService {
                 durationMs,
                 evaluation.score(),
                 evaluation.isSufficient(),
-                evaluation.feedback()
+                evaluation.feedback(),
+                evaluation.evaluator()
         );
 
         return evaluation;
