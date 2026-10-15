@@ -5,7 +5,7 @@ import com.aives.teaching.DeskRecords.AttemptItem;
 import com.aives.teaching.DeskRecords.ExamQuestionItem;
 import com.aives.teaching.DeskRecords.QuestionItem;
 import com.aives.teaching.DeskRecords.SessionItem;
-import com.aives.teaching.DeskRecords.SubmitAttemptRequest;
+import com.aives.teaching.DeskRecords.SubmitAttemptResult;
 import com.aives.teaching.DeskRecords.VivaEvaluationItem;
 import com.aives.teaching.DeskRecords.VivaTurnItem;
 import com.aives.user.PublicUser;
@@ -94,14 +94,13 @@ public class StudentDeskController {
         return evaluationService.getTurns(student, id);
     }
 
+    /** The score is always computed on the server; a score in the request body is ignored. */
     @PostMapping("/exams/{id}/submit")
-    public void submitExam(
+    public SubmitAttemptResult submitExam(
             @AuthenticationPrincipal PublicUser student,
-            @PathVariable String id,
-            @RequestBody(required = false) SubmitAttemptRequest request
+            @PathVariable String id
     ) {
-        Integer score = request != null ? request.score() : null;
-        evaluationService.submitExam(student, id, score);
+        return evaluationService.submitExam(student, id);
     }
 
     private static ExamQuestionItem withoutAnswers(QuestionItem question) {

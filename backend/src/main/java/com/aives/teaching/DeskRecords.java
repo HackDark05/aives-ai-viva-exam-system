@@ -143,8 +143,11 @@ public final class DeskRecords {
     ) {
     }
 
-    public record SubmitAttemptRequest(
-            Integer score
+    /** Final score computed on the server from the stored answers. */
+    public record SubmitAttemptResult(
+            int score,
+            int answeredQuestions,
+            int totalQuestions
     ) {
     }
 }

@@ -392,6 +392,7 @@ export const vi: Messages = {
       nextQuestion: "Câu hỏi tiếp theo",
       finishExam: "Nộp bài & Hoàn thành",
       examFinished: "Đã hoàn thành ca thi viva thành công!",
+      examFinishedWithScore: "Đã nộp bài. Điểm: {score}/100 (đã trả lời {answered}/{total} câu).",
       aiFeedback: "Nhận xét của AI:",
       voiceSelect: "Giọng đọc ZeroTTS:",
       detectedLangVi: "Đề tiếng Việt → giọng Việt",

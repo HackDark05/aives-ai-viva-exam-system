@@ -1,7 +1,9 @@
 package com.aives.teaching;
 
 import com.aives.config.AppProperties;
+import com.aives.teaching.AttemptScoring.WeightedQuestion;
 import com.aives.teaching.DeskRecords.QuestionItem;
+import com.aives.teaching.DeskRecords.SubmitAttemptResult;
 import com.aives.teaching.DeskRecords.VivaEvaluationItem;
 import com.aives.teaching.DeskRecords.VivaTurnItem;
 import com.aives.user.PublicUser;
@@ -42,11 +44,11 @@ public class VivaEvaluationService {
             String studentAnswer,
             Integer durationMs
     ) {
-        String attemptId = getOrCreateAttempt(examId, student.id());
-        QuestionItem question = desk.question(questionId);
-        if (question == null) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Question not found");
-        }
+        String attemptId = openAttempt(examId, student.id());
+        QuestionItem question = desk.questionsOnExam(examId).stream()
+                .filter(item -> item.id().equals(questionId))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found on this exam"));
 
         UUID turnId = UUID.randomUUID();
         int turnNo = desk.nextTurnNo(attemptId);
@@ -60,7 +62,10 @@ public class VivaEvaluationService {
                 studentAnswer,
                 !evaluation.isSufficient() && evaluation.followUpQuestion() != null,
                 evaluation.isSufficient() ? null : "MISSING_KEY_POINTS",
-                durationMs
+                durationMs,
+                evaluation.score(),
+                evaluation.isSufficient(),
+                evaluation.feedback()
         );
 
         return evaluation;
@@ -74,7 +79,7 @@ public class VivaEvaluationService {
             String studentAnswer,
             Integer durationMs
     ) {
-        String attemptId = getOrCreateAttempt(examId, student.id());
+        String attemptId = openAttempt(examId, student.id());
 
         // Find parent turn to associate question
         List<VivaTurnItem> previousTurns = desk.turnsForAttempt(attemptId);
@@ -100,7 +105,10 @@ public class VivaEvaluationService {
                 studentAnswer,
                 false,
                 null,
-                durationMs
+                durationMs,
+                evaluation.score(),
+                evaluation.isSufficient(),
+                evaluation.feedback()
         );
 
         return evaluation;
@@ -114,11 +122,32 @@ public class VivaEvaluationService {
         return desk.turnsForAttempt(attemptId);
     }
 
+    /**
+     * Submits the attempt with a score computed from the answers stored on the server. Any score the
+     * client might send is ignored.
+     */
     @Transactional
-    public void submitExam(PublicUser student, String examId, Integer score) {
-        String attemptId = getOrCreateAttempt(examId, student.id());
-        int finalScore = score != null ? Math.max(0, Math.min(100, score)) : 80;
-        desk.submitAttempt(attemptId, finalScore);
+    public SubmitAttemptResult submitExam(PublicUser student, String examId) {
+        String attemptId = openAttempt(examId, student.id());
+        List<WeightedQuestion> questions = desk.questionsOnExam(examId).stream()
+                .map(question -> new WeightedQuestion(question.id(), question.maxScore()))
+                .toList();
+        Map<String, Double> best = desk.bestAnswerScores(attemptId);
+        int finalScore = AttemptScoring.finalScore(questions, best);
+        if (!desk.submitAttempt(attemptId, finalScore)) {
+            throw new ApiException(HttpStatus.CONFLICT, "This exam has already been submitted");
+        }
+        int answered = (int) questions.stream().filter(question -> best.containsKey(question.questionId())).count();
+        return new SubmitAttemptResult(finalScore, answered, questions.size());
+    }
+
+    /** Returns the student's attempt, creating it if needed, and rejects changes once it is submitted. */
+    private String openAttempt(String examId, String studentId) {
+        String attemptId = getOrCreateAttempt(examId, studentId);
+        if ("SUBMITTED".equals(desk.attemptStatus(attemptId))) {
+            throw new ApiException(HttpStatus.CONFLICT, "This exam has already been submitted");
+        }
+        return attemptId;
     }
 
     private String getOrCreateAttempt(String examId, String studentId) {
