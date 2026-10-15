@@ -13,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BookOpenIcon,
   ClipboardCheckIcon,
+  FolderPlusIcon,
   LayoutDashboardIcon,
   Loader2Icon,
   LogOutIcon,
@@ -42,13 +43,15 @@ import { cn } from "cn";
 const NAV = [
   { href: "/teacher", key: "nav.teacher.overview", icon: LayoutDashboardIcon, exact: true },
   { href: "/teacher/tests", key: "nav.teacher.exams", icon: PlayCircleIcon, exact: false },
+  { href: "/teacher/subjects", key: "nav.teacher.createSubject", icon: FolderPlusIcon, exact: false },
   { href: "/teacher/bank", key: "nav.teacher.bank", icon: BookOpenIcon, exact: false },
   { href: "/teacher/scores", key: "nav.teacher.scores", icon: ClipboardCheckIcon, exact: false },
 ] as const;
 
-const PAGE_TITLE_KEYS: Record<string, "overview" | "exams" | "bank" | "rubrics" | "scores"> = {
+const PAGE_TITLE_KEYS: Record<string, "overview" | "exams" | "createSubject" | "bank" | "rubrics" | "scores"> = {
   "/teacher": "overview",
   "/teacher/tests": "exams",
+  "/teacher/subjects": "createSubject",
   "/teacher/bank": "bank",
   "/teacher/scores": "scores",
 };
