@@ -1,62 +1,59 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { CalendarClockIcon } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState, LoadingSkeleton, PageHeader } from "@/components/admin/ui/dashboard-ui";
 import { SelectControl } from "@/components/admin/ui/controls";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  examStatusCounts,
+  examStatusPresentation,
+  fetchAdminStats,
+  parseAdminStats,
+  type AdminStats,
+  type CountedExamStatus,
+} from "@/lib/admin/dashboard";
 import { api, ApiError } from "@/lib/api";
 import { useLocale } from "@/lib/i18n/locale-provider";
 import { ENGLISH_VOICES, ZEROTTS_VOICES } from "@/lib/tts-service";
 import type { User } from "@/lib/types";
+import { cn } from "cn";
 
 type Subject = { id: string; code: string; name: string; teacherIds: string[] };
-type Speech = { sttLanguage: string; ttsLanguage: string; ttsVoice: string; ttsVoiceEn: string };
+type Tab = "schedule" | "config";
 
 export function AdminSettings() {
   const { t, messages } = useLocale();
   const copy = messages.admin.settings;
+  const [tab, setTab] = useState<Tab>("schedule");
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
-  const [speech, setSpeech] = useState<Speech>({
-    sttLanguage: "vi",
-    ttsLanguage: "vi",
-    ttsVoice: "maichi",
-    ttsVoiceEn: "maichi",
-  });
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ code?: string; name?: string }>({});
   const [savingSubject, setSavingSubject] = useState(false);
-  const [savingSpeech, setSavingSpeech] = useState(false);
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
   const load = useCallback((signal: AbortSignal) => {
     return Promise.all([
       api<Subject[]>("/api/admin/subjects", { auth: true, signal, cache: "no-store" }),
       api<User[]>("/api/users", { auth: true, signal, cache: "no-store" }),
-      api<Speech>("/api/admin/speech", { auth: true, signal, cache: "no-store" }),
     ]);
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal)
-      .then(([nextSubjects, people, nextSpeech]) => {
+      .then(([nextSubjects, people]) => {
         if (controller.signal.aborted) return;
         setSubjects(nextSubjects);
         setTeachers(people.filter((person) => person.role === "EXAMINER"));
-        setSpeech({
-          sttLanguage: nextSpeech.sttLanguage || "vi",
-          ttsLanguage: nextSpeech.ttsLanguage || "vi",
-          ttsVoice: nextSpeech.ttsVoice || "maichi",
-          ttsVoiceEn: nextSpeech.ttsVoiceEn || "maichi",
-        });
         setError(null);
       })
       .catch((reason) => {
@@ -110,28 +107,51 @@ export function AdminSettings() {
     }
   }
 
-  async function saveSpeech(event: FormEvent) {
-    event.preventDefault();
-    setSavingSpeech(true);
-    try {
-      const saved = await api<Speech>("/api/admin/speech", {
-        method: "PATCH",
-        auth: true,
-        body: speech,
-      });
-      setSpeech(saved);
-      toast.success(copy.saved);
-    } catch (reason) {
-      toast.error(reason instanceof ApiError ? reason.message : copy.saveError);
-    } finally {
-      setSavingSpeech(false);
-    }
-  }
+  const teacherName = (id: string) => teachers.find((teacher) => teacher.id === id)?.name;
 
   return (
     <div className="min-w-0 space-y-8">
-      <PageHeader eyebrow={copy.eyebrow} title={copy.title} description={copy.lead} />
+      <PageHeader title={copy.title} />
 
+      <div
+        role="tablist"
+        aria-label={copy.tabsLabel}
+        className="flex w-fit gap-1 rounded-lg bg-muted p-1"
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+          event.preventDefault();
+          const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+          const current = tabs.findIndex((tabButton) => tabButton === document.activeElement);
+          if (current < 0) return;
+          const nextIndex =
+            event.key === "ArrowRight"
+              ? (current + 1) % tabs.length
+              : (current - 1 + tabs.length) % tabs.length;
+          tabs[nextIndex]?.focus();
+          tabs[nextIndex]?.click();
+        }}
+      >
+        <TabButton
+          selected={tab === "schedule"}
+          controls="settings-schedule"
+          onSelect={() => setTab("schedule")}
+        >
+          {copy.scheduleTab}
+        </TabButton>
+        <TabButton
+          selected={tab === "config"}
+          controls="settings-config"
+          onSelect={() => setTab("config")}
+        >
+          {copy.configTab}
+        </TabButton>
+      </div>
+
+      <div id="settings-schedule" role="tabpanel" hidden={tab !== "schedule"}>
+        {tab === "schedule" ? <ExamSchedule /> : null}
+      </div>
+
+      <div id="settings-config" role="tabpanel" hidden={tab !== "config"} className="space-y-8">
       {error && subjects === null ? (
         <ErrorState
           title={copy.loadError}
@@ -154,7 +174,6 @@ export function AdminSettings() {
           <Card className="min-w-0">
             <CardHeader className="border-b">
               <CardTitle className="font-serif text-2xl">{copy.subjectsTitle}</CardTitle>
-              <CardDescription>{copy.subjectsDescription}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start" onSubmit={createSubject}>
@@ -201,13 +220,29 @@ export function AdminSettings() {
                         key={subject.id}
                         className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div>
+                        <div className="min-w-0 space-y-1.5">
                           <p className="font-medium">
                             {subject.code} — {subject.name}
                           </p>
-                          <p className="text-sm text-muted-foreground">
-                            {t("admin.settings.teachersAssigned", { count: String(subject.teacherIds.length) })}
-                          </p>
+                          {subject.teacherIds.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">{copy.noTeacher}</p>
+                          ) : (
+                            <ul
+                              className="flex flex-wrap gap-1.5"
+                              aria-label={t("admin.settings.teachersAssigned", {
+                                count: String(subject.teacherIds.length),
+                              })}
+                            >
+                              {subject.teacherIds.map((id) => (
+                                <li
+                                  key={id}
+                                  className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                                >
+                                  {teacherName(id) ?? copy.unknownTeacher}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </div>
                         <SelectControl
                           className="w-full sm:w-56"
@@ -230,82 +265,128 @@ export function AdminSettings() {
               )}
             </CardContent>
           </Card>
-
-          <Card className="min-w-0">
-            <CardHeader className="border-b">
-              <CardTitle className="font-serif text-2xl">{copy.speechTitle}</CardTitle>
-              <CardDescription>{copy.speechDescription}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-3 sm:grid-cols-2" onSubmit={saveSpeech}>
-                <label className="grid gap-1.5 text-sm" htmlFor="speech-stt">
-                  <span className="font-medium">{copy.stt}</span>
-                  <SelectControl
-                    id="speech-stt"
-                    value={speech.sttLanguage}
-                    onChange={(event) =>
-                      setSpeech((current) => ({ ...current, sttLanguage: event.target.value }))
-                    }
-                  >
-                    <option value="vi">{copy.vietnamese}</option>
-                    <option value="en">{copy.english}</option>
-                  </SelectControl>
-                </label>
-                <label className="grid gap-1.5 text-sm" htmlFor="speech-tts">
-                  <span className="font-medium">{copy.tts}</span>
-                  <SelectControl
-                    id="speech-tts"
-                    value={speech.ttsLanguage}
-                    onChange={(event) =>
-                      setSpeech((current) => ({ ...current, ttsLanguage: event.target.value }))
-                    }
-                  >
-                    <option value="vi">{copy.vietnamese}</option>
-                    <option value="en">{copy.english}</option>
-                  </SelectControl>
-                </label>
-                <label className="grid gap-1.5 text-sm" htmlFor="speech-voice">
-                  <span className="font-medium">{copy.ttsVoice}</span>
-                  <SelectControl
-                    id="speech-voice"
-                    value={speech.ttsVoice}
-                    onChange={(event) =>
-                      setSpeech((current) => ({ ...current, ttsVoice: event.target.value }))
-                    }
-                  >
-                    {ZEROTTS_VOICES.map((voice) => (
-                      <option key={voice.id} value={voice.id}>
-                        {voice.label}
-                      </option>
-                    ))}
-                  </SelectControl>
-                  <span className="text-xs text-muted-foreground">{copy.ttsVoiceHint}</span>
-                </label>
-                <label className="grid gap-1.5 text-sm" htmlFor="speech-voice-en">
-                  <span className="font-medium">{copy.ttsVoiceEn}</span>
-                  <SelectControl
-                    id="speech-voice-en"
-                    value={speech.ttsVoiceEn}
-                    onChange={(event) =>
-                      setSpeech((current) => ({ ...current, ttsVoiceEn: event.target.value }))
-                    }
-                  >
-                    {ENGLISH_VOICES.map((voice) => (
-                      <option key={voice.id} value={voice.id}>
-                        {voice.label}
-                      </option>
-                    ))}
-                  </SelectControl>
-                  <span className="text-xs text-muted-foreground">{copy.ttsVoiceEnHint}</span>
-                </label>
-                <Button type="submit" className="sm:col-span-2 sm:w-fit" disabled={savingSpeech}>
-                  {savingSpeech ? copy.saving : copy.save}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
         </>
       )}
+      </div>
     </div>
+  );
+}
+
+const STATUS_LABEL_KEY = {
+  SCHEDULED: "scheduled",
+  IN_PROGRESS: "inProgress",
+  COMPLETED: "completed",
+} as const satisfies Record<CountedExamStatus, string>;
+
+function ExamSchedule() {
+  const { t, messages } = useLocale();
+  const copy = messages.admin.settings;
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchAdminStats(controller.signal)
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        setStats(parseAdminStats(value));
+        setError(null);
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        setError(reason instanceof ApiError ? reason.message : copy.scheduleLoadError);
+      });
+    return () => controller.abort();
+  }, [reloadKey, copy.scheduleLoadError]);
+
+  return (
+    <div className="space-y-8">
+      <Card className="min-w-0">
+        <CardHeader className="border-b">
+          <CardTitle className="font-serif text-2xl">{copy.scheduleTitle}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {error && stats === null ? (
+            <ErrorState
+              title={copy.scheduleLoadError}
+              message={error}
+              retryLabel={copy.retry}
+              onRetry={() => setReloadKey((current) => current + 1)}
+            />
+          ) : stats === null ? (
+            <LoadingSkeleton className="h-28 w-full" label={copy.loading} />
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-3">
+              {examStatusCounts(stats).map((row) => (
+                <li key={row.status} className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span
+                      className={cn("size-2 rounded-full", examStatusPresentation(row.status).barClass)}
+                      aria-hidden
+                    />
+                    {copy[STATUS_LABEL_KEY[row.status]]}
+                  </span>
+                  <span className="mt-3 block font-serif text-3xl tabular-nums tracking-tight">
+                    {row.total.toLocaleString()}
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 text-muted-foreground">
+                    {t("admin.settings.formatSplit", {
+                      multipleChoice: String(row.multipleChoice),
+                      oral: String(row.oral),
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="min-w-0">
+        <CardHeader className="border-b">
+          <CardTitle className="font-serif text-2xl">{copy.sessionsTitle}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-10 text-center">
+            <span className="flex size-10 items-center justify-center rounded-full bg-muted">
+              <CalendarClockIcon className="size-5 text-muted-foreground" aria-hidden />
+            </span>
+            <div className="space-y-1">
+              <p className="font-medium">{copy.sessionsEmptyTitle}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function TabButton({
+  selected,
+  controls,
+  onSelect,
+  children,
+}: {
+  selected: boolean;
+  controls: string;
+  onSelect: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      aria-controls={controls}
+      tabIndex={selected ? 0 : -1}
+      onClick={onSelect}
+      className={cn(
+        "rounded-md px-3 py-1.5 text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+        selected ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
   );
 }
