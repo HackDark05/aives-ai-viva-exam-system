@@ -10,17 +10,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiError } from "@/lib/api";
 import { useLocale } from "@/lib/i18n/locale-provider";
+import { ENGLISH_VOICES, ZEROTTS_VOICES } from "@/lib/tts-service";
 import type { User } from "@/lib/types";
 
 type Subject = { id: string; code: string; name: string; teacherIds: string[] };
-type Speech = { sttLanguage: string; ttsLanguage: string };
+type Speech = { sttLanguage: string; ttsLanguage: string; ttsVoice: string; ttsVoiceEn: string };
 
 export function AdminSettings() {
   const { t, messages } = useLocale();
   const copy = messages.admin.settings;
   const [subjects, setSubjects] = useState<Subject[] | null>(null);
   const [teachers, setTeachers] = useState<User[]>([]);
-  const [speech, setSpeech] = useState<Speech>({ sttLanguage: "vi", ttsLanguage: "vi" });
+  const [speech, setSpeech] = useState<Speech>({
+    sttLanguage: "vi",
+    ttsLanguage: "vi",
+    ttsVoice: "maichi",
+    ttsVoiceEn: "maichi",
+  });
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [code, setCode] = useState("");
@@ -45,7 +51,12 @@ export function AdminSettings() {
         if (controller.signal.aborted) return;
         setSubjects(nextSubjects);
         setTeachers(people.filter((person) => person.role === "EXAMINER"));
-        setSpeech(nextSpeech);
+        setSpeech({
+          sttLanguage: nextSpeech.sttLanguage || "vi",
+          ttsLanguage: nextSpeech.ttsLanguage || "vi",
+          ttsVoice: nextSpeech.ttsVoice || "maichi",
+          ttsVoiceEn: nextSpeech.ttsVoiceEn || "maichi",
+        });
         setError(null);
       })
       .catch((reason) => {
@@ -252,6 +263,40 @@ export function AdminSettings() {
                     <option value="vi">{copy.vietnamese}</option>
                     <option value="en">{copy.english}</option>
                   </SelectControl>
+                </label>
+                <label className="grid gap-1.5 text-sm" htmlFor="speech-voice">
+                  <span className="font-medium">{copy.ttsVoice}</span>
+                  <SelectControl
+                    id="speech-voice"
+                    value={speech.ttsVoice}
+                    onChange={(event) =>
+                      setSpeech((current) => ({ ...current, ttsVoice: event.target.value }))
+                    }
+                  >
+                    {ZEROTTS_VOICES.map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.label}
+                      </option>
+                    ))}
+                  </SelectControl>
+                  <span className="text-xs text-muted-foreground">{copy.ttsVoiceHint}</span>
+                </label>
+                <label className="grid gap-1.5 text-sm" htmlFor="speech-voice-en">
+                  <span className="font-medium">{copy.ttsVoiceEn}</span>
+                  <SelectControl
+                    id="speech-voice-en"
+                    value={speech.ttsVoiceEn}
+                    onChange={(event) =>
+                      setSpeech((current) => ({ ...current, ttsVoiceEn: event.target.value }))
+                    }
+                  >
+                    {ENGLISH_VOICES.map((voice) => (
+                      <option key={voice.id} value={voice.id}>
+                        {voice.label}
+                      </option>
+                    ))}
+                  </SelectControl>
+                  <span className="text-xs text-muted-foreground">{copy.ttsVoiceEnHint}</span>
                 </label>
                 <Button type="submit" className="sm:col-span-2 sm:w-fit" disabled={savingSpeech}>
                   {savingSpeech ? copy.saving : copy.save}

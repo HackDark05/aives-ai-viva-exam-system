@@ -51,6 +51,7 @@ CREATE TABLE language_config (
   stt_language varchar(20) NOT NULL,
   tts_language varchar(20) NOT NULL,
   tts_voice varchar(100),
+  tts_voice_en varchar(100),
   is_default boolean NOT NULL DEFAULT false
 );
 
@@ -271,6 +272,6 @@ ALTER TABLE answer ADD CONSTRAINT ck_answer_score CHECK (score IS NULL OR (score
 ALTER TABLE answer ADD CONSTRAINT ck_answer_teacher_score CHECK (teacher_score IS NULL OR (teacher_score >= 0 AND teacher_score <= 100));
 
 INSERT INTO role (id, code, name) VALUES (1, 'ADMIN', 'Administrator'), (2, 'EXAMINER', 'Teacher'), (3, 'STUDENT', 'Student');
-INSERT INTO language_config (id, code, name, stt_language, tts_language, is_default) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'vi', 'Vietnamese', 'vi-VN', 'vi-VN', true),
-  ('00000000-0000-0000-0000-000000000002', 'en', 'English', 'en-US', 'en-US', false);
+INSERT INTO language_config (id, code, name, stt_language, tts_language, tts_voice, tts_voice_en, is_default) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'vi', 'Vietnamese', 'vi-VN', 'vi-VN', 'maichi', 'maichi', true),
+  ('00000000-0000-0000-0000-000000000002', 'en', 'English', 'en-US', 'en-US', 'maichi', 'maichi', false);

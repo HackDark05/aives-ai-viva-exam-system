@@ -31,5 +31,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_course_document_content
     WHERE content_hash IS NOT NULL AND extraction_status <> 'FAILED';
 CREATE INDEX IF NOT EXISTS idx_course_document_status ON course_document (extraction_status);
 
+ALTER TABLE language_config ADD COLUMN IF NOT EXISTS tts_voice varchar(100);
+ALTER TABLE language_config ADD COLUMN IF NOT EXISTS tts_voice_en varchar(100);
+UPDATE language_config SET tts_voice = 'maichi' WHERE tts_voice IS NULL OR tts_voice = '';
+UPDATE language_config
+SET tts_voice_en = 'maichi'
+WHERE tts_voice_en IS NULL
+   OR tts_voice_en = ''
+   OR tts_voice_en IN ('google-en-us', 'google-en-gb', 'microsoft-en-us', 'browser-en-us');
+
 -- Left over from when Flyway managed the schema.
 DROP TABLE IF EXISTS flyway_schema_history;
