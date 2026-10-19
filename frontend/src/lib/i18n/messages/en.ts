@@ -80,8 +80,6 @@ export const en = {
   errors: {
     wrongRolePortal: "That screen belongs to another role.",
     adminOnly: "Only administrators can open this dashboard.",
-    chooseRole: "Choose Student, Teacher, or Administrator to enter.",
-    roleMismatch: "This account is a {role}. Choose that role to enter.",
     apiUnreachable: "Unable to reach the AIVES API. Is the backend running?",
   },
   login: {
@@ -99,8 +97,7 @@ export const en = {
     joinHall: "Join the hall",
     enterHall: "Enter the hall",
     createLead: "New accounts enter as a student.",
-    signInLead: "Choose a role, then sign in to open that screen.",
-    roleLegend: "Role",
+    signInLead: "Sign in to open the screen for your account.",
     name: "Name",
     email: "Email",
     password: "Password",

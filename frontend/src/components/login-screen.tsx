@@ -14,53 +14,27 @@ import { api, ApiError } from "@/lib/api";
 import { setSession } from "@/lib/auth";
 import { useLocale } from "@/lib/i18n/locale-provider";
 import { homeForRole } from "@/lib/role-home";
-import type { LoginResponse, Role } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type { LoginResponse } from "@/lib/types";
 
 export function LoginScreen() {
   const router = useRouter();
   const { t, messages } = useLocale();
-  const roleChoices: { value: Role; label: string }[] = [
-    { value: "STUDENT", label: t("roles.student") },
-    { value: "EXAMINER", label: t("roles.teacher") },
-    { value: "ADMIN", label: t("roles.admin") },
-  ];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
 
-  function enter(result: LoginResponse) {
+  function finish(result: LoginResponse) {
     setSession(result.accessToken);
     toast.success(t("login.welcome", { name: result.user.name.split(" ")[0] }));
     router.replace(homeForRole(result.user.role));
     router.refresh();
   }
 
-  function finish(result: LoginResponse, chosenRole: Role) {
-    if (result.user.role !== chosenRole) {
-      const roleKey =
-        result.user.role === "STUDENT"
-          ? "roles.student"
-          : result.user.role === "EXAMINER"
-            ? "roles.teacher"
-            : "roles.admin";
-      toast.error(t("errors.roleMismatch", { role: t(roleKey) }));
-      return;
-    }
-    enter(result);
-  }
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const chosenRole = mode === "create" ? "STUDENT" : selectedRole;
-    if (!chosenRole) {
-      toast.error(t("errors.chooseRole"));
-      return;
-    }
     setSubmitting(true);
 
     try {
@@ -74,7 +48,7 @@ export function LoginScreen() {
               : { email, password },
         },
       );
-      finish(result, chosenRole);
+      finish(result);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -93,7 +67,7 @@ export function LoginScreen() {
         method: "POST",
         body: { idToken },
       });
-      enter(result);
+      finish(result);
     } catch (error) {
       const message =
         error instanceof ApiError
@@ -191,32 +165,6 @@ export function LoginScreen() {
           </div>
 
           <form className="mt-4 space-y-6" onSubmit={onSubmit}>
-            {mode === "sign-in" ? (
-              <fieldset>
-                <legend className="text-sm font-medium">{t("login.roleLegend")}</legend>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {roleChoices.map((choice) => {
-                    const selected = selectedRole === choice.value;
-                    return (
-                      <button
-                        key={choice.value}
-                        type="button"
-                        aria-pressed={selected}
-                        className={cn(
-                          "h-11 rounded-lg border text-sm",
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-input bg-background text-foreground hover:bg-muted",
-                        )}
-                        onClick={() => setSelectedRole(choice.value)}
-                      >
-                        {choice.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            ) : null}
             <FieldGroup>
               {mode === "create" ? (
                 <Field>

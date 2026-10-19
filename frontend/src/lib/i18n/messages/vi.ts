@@ -82,8 +82,6 @@ export const vi: Messages = {
   errors: {
     wrongRolePortal: "Màn hình này dành cho vai trò khác.",
     adminOnly: "Chỉ quản trị viên mới mở được bảng điều khiển này.",
-    chooseRole: "Chọn Sinh viên, Giảng viên hoặc Quản trị viên để vào.",
-    roleMismatch: "Tài khoản này là {role}. Hãy chọn đúng vai trò để vào.",
     apiUnreachable: "Không kết nối được API AIVES. Backend đã chạy chưa?",
   },
   login: {
@@ -101,8 +99,7 @@ export const vi: Messages = {
     joinHall: "Gia nhập phòng thi",
     enterHall: "Vào phòng thi",
     createLead: "Tài khoản mới mặc định là sinh viên.",
-    signInLead: "Chọn vai trò, rồi đăng nhập để mở màn hình tương ứng.",
-    roleLegend: "Vai trò",
+    signInLead: "Đăng nhập để mở màn hình của tài khoản.",
     name: "Họ tên",
     email: "Email",
     password: "Mật khẩu",
