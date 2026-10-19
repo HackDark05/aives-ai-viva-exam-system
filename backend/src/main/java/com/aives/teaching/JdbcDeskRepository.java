@@ -118,6 +118,51 @@ public class JdbcDeskRepository {
         );
     }
 
+    public int unassignTeacher(String subjectId, String teacherId) {
+        return jdbc.update(
+                "DELETE FROM course_assignment WHERE course_id = ?::uuid AND teacher_id = ?::uuid",
+                subjectId,
+                teacherId
+        );
+    }
+
+    public int updateSubject(String subjectId, String code, String name) {
+        return jdbc.update(
+                "UPDATE course SET code = ?, name = ? WHERE id = ?::uuid",
+                code,
+                name,
+                subjectId
+        );
+    }
+
+    /** Rows that still point at the subject and would be lost or orphaned by deleting it. */
+    public int subjectUsage(String subjectId) {
+        Integer count = jdbc.queryForObject(
+                """
+                SELECT (SELECT count(*) FROM exam_session WHERE course_id = ?::uuid)
+                     + (SELECT count(*) FROM question WHERE course_id = ?::uuid)
+                     + (SELECT count(*) FROM course_document WHERE course_id = ?::uuid)
+                     + (SELECT count(*) FROM knowledge_chunk WHERE course_id = ?::uuid)
+                     + (SELECT count(*) FROM enrollment WHERE course_id = ?::uuid)
+                     + (SELECT count(*) FROM ai_generation_request WHERE course_id = ?::uuid)
+                """,
+                Integer.class,
+                subjectId, subjectId, subjectId, subjectId, subjectId, subjectId
+        );
+        return count == null ? 0 : count;
+    }
+
+    @Transactional
+    public int deleteSubject(String subjectId) {
+        jdbc.update("DELETE FROM course_assignment WHERE course_id = ?::uuid", subjectId);
+        jdbc.update(
+                "DELETE FROM rubric_criterion WHERE rubric_id IN (SELECT id FROM rubric WHERE course_id = ?::uuid)",
+                subjectId
+        );
+        jdbc.update("DELETE FROM rubric WHERE course_id = ?::uuid", subjectId);
+        return jdbc.update("DELETE FROM course WHERE id = ?::uuid", subjectId);
+    }
+
     public List<RubricItem> rubricsForTeacher(String teacherId) {
         return jdbc.query(
                 """
