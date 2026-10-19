@@ -18,9 +18,12 @@ import { useSTT } from "@/lib/stt-service";
 import {
   checkZeroTTSStatus,
   detectSpeechLang,
+  normalizeEnVoice,
+  normalizeViVoice,
   playTTS,
   stopTTS,
-  ZEROTTS_VOICES,
+  voiceForSpeech,
+  voiceLabel,
   type SpeechLang,
 } from "@/lib/tts-service";
 
@@ -111,7 +114,7 @@ function interpretChoice(raw: string): "continue" | "next" | null {
   return null;
 }
 
-function speakLine(text: string, voice: string) {
+function speakLine(text: string, viVoice: string, enVoice: string) {
   return new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
@@ -119,9 +122,10 @@ function speakLine(text: string, voice: string) {
       settled = true;
       resolve();
     };
+    const lang = detectSpeechLang(text);
     void playTTS(text, {
-      voice,
-      lang: detectSpeechLang(text),
+      voice: voiceForSpeech(lang, viVoice, enVoice),
+      lang,
       onEnd: finish,
       onError: finish,
     });
@@ -238,6 +242,8 @@ function VivaExamRoom({
   const { t } = useLocale();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeVoice, setActiveVoice] = useState("maichi");
+  const [activeEnVoice, setActiveEnVoice] = useState("maichi");
+  const [voiceReady, setVoiceReady] = useState(false);
   const [isZeroTTSOnline, setIsZeroTTSOnline] = useState<boolean | null>(null);
   const [evaluations, setEvaluations] = useState<Record<string, EvaluationItem>>({});
   const [submittingExam, setSubmittingExam] = useState(false);
@@ -266,6 +272,7 @@ function VivaExamRoom({
   const phaseRef = useRef<Phase>(phase);
   const indexRef = useRef(currentIndex);
   const voiceRef = useRef(activeVoice);
+  const enVoiceRef = useRef(activeEnVoice);
   const transcriptRef = useRef(transcript);
   const followUpRef = useRef<string | null>(followUpPrompt);
   const parentTurnRef = useRef<string | null>(null);
@@ -291,10 +298,11 @@ function VivaExamRoom({
     phaseRef.current = phase;
     indexRef.current = currentIndex;
     voiceRef.current = activeVoice;
+    enVoiceRef.current = activeEnVoice;
     transcriptRef.current = transcript;
     followUpRef.current = followUpPrompt;
     tRef.current = t;
-  }, [phase, currentIndex, activeVoice, transcript, followUpPrompt, t]);
+  }, [phase, currentIndex, activeVoice, activeEnVoice, transcript, followUpPrompt, t]);
 
   const setExamPhase = useCallback((next: Phase) => {
     phaseRef.current = next;
@@ -326,9 +334,10 @@ function VivaExamRoom({
     const run = ++runRef.current;
     stopListeningRef.current();
     setExamPhase("speaking");
+    const lang = detectSpeechLang(text);
     void playTTS(text, {
-      voice: voiceRef.current,
-      lang: detectSpeechLang(text),
+      voice: voiceForSpeech(lang, voiceRef.current, enVoiceRef.current),
+      lang,
       onEnd: () => beginAfterSpeech(run, after),
       onError: () => beginAfterSpeech(run, after),
     });
@@ -351,6 +360,16 @@ function VivaExamRoom({
     checkZeroTTSStatus().then((online) => {
       if (!cancelled) setIsZeroTTSOnline(online);
     });
+    api<{ ttsVoice?: string; ttsVoiceEn?: string }>("/api/student/speech", { auth: true })
+      .then((settings) => {
+        if (cancelled) return;
+        setActiveVoice(normalizeViVoice(settings.ttsVoice));
+        setActiveEnVoice(normalizeEnVoice(settings.ttsVoiceEn));
+        setVoiceReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setVoiceReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -489,7 +508,11 @@ function VivaExamRoom({
         const bridge = tRef.current(bridgeKey);
         pushBubble("examiner", bridge);
         setExamPhase("speaking");
-        await speakLine([result.feedback, bridge].filter(Boolean).join(" "), voiceRef.current);
+        await speakLine(
+          [result.feedback, bridge].filter(Boolean).join(" "),
+          voiceRef.current,
+          enVoiceRef.current,
+        );
         if (!mountedRef.current) return;
         if (last) await finishExam();
         else setCurrentIndex((value) => Math.min(questions.length - 1, value + 1));
@@ -633,25 +656,13 @@ function VivaExamRoom({
                 : t("student.tests.detectedLangVi")}
             </span>
           </div>
-          {speechLang === "vi-VN" ? (
-            <div className="flex items-center gap-1 text-xs">
-              <label htmlFor="voice-select" className="text-muted-foreground">
-                {t("student.tests.voiceSelect")}
-              </label>
-              <select
-                id="voice-select"
-                value={activeVoice}
-                onChange={(event) => setActiveVoice(event.target.value)}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-              >
-                {ZEROTTS_VOICES.map((voice) => (
-                  <option key={voice.id} value={voice.id}>
-                    {voice.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
+          <p className="text-xs text-muted-foreground">
+            {t("student.tests.voiceSelect")}{" "}
+            <span className="font-medium text-foreground">
+              {voiceLabel(speechLang === "en-US" ? activeEnVoice : activeVoice)}
+              {!voiceReady ? "…" : ""}
+            </span>
+          </p>
           <Button variant="ghost" size="sm" onClick={leave}>
             Thoát ca thi
           </Button>

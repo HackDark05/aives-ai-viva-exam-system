@@ -111,7 +111,12 @@ public final class DeskRecords {
     ) {
     }
 
-    public record SpeechSettings(String sttLanguage, String ttsLanguage) {
+    public record SpeechSettings(
+            String sttLanguage,
+            String ttsLanguage,
+            String ttsVoice,
+            String ttsVoiceEn
+    ) {
     }
 
     public record AnswerSubmissionRequest(
