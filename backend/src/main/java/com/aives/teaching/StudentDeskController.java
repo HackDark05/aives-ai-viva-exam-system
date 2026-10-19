@@ -82,7 +82,8 @@ public class StudentDeskController {
                 id,
                 turnId,
                 request.answer(),
-                request.durationMs()
+                request.durationMs(),
+                request.followUpQuestion()
         );
     }
 
