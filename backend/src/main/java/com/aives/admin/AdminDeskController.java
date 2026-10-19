@@ -174,7 +174,19 @@ public class AdminDeskController {
         if (!LANGUAGES.contains(request.sttLanguage()) || !LANGUAGES.contains(request.ttsLanguage())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Language must be vi or en");
         }
-        desk.saveSpeech(request.sttLanguage(), request.ttsLanguage());
+        String voice = request.ttsVoice() == null || request.ttsVoice().isBlank()
+                ? "maichi"
+                : request.ttsVoice().trim();
+        String voiceEn = request.ttsVoiceEn() == null || request.ttsVoiceEn().isBlank()
+                ? "maichi"
+                : request.ttsVoiceEn().trim();
+        if (!TTS_VOICES_VI.contains(voice)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported Vietnamese TTS voice");
+        }
+        if (!TTS_VOICES_EN.contains(voiceEn)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported English TTS voice");
+        }
+        desk.saveSpeech(request.sttLanguage(), request.ttsLanguage(), voice, voiceEn);
         return desk.speechSettings();
     }
 
@@ -193,6 +205,11 @@ public class AdminDeskController {
     public record AssignTeacherRequest(@NotBlank String subjectId, @NotBlank String teacherId) {
     }
 
-    public record SpeechRequest(@NotBlank String sttLanguage, @NotBlank String ttsLanguage) {
+    public record SpeechRequest(
+            @NotBlank String sttLanguage,
+            @NotBlank String ttsLanguage,
+            String ttsVoice,
+            String ttsVoiceEn
+    ) {
     }
 }
