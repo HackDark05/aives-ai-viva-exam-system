@@ -1,6 +1,3 @@
--- AIVES schema: features 1 (question bank + rubric), 3 (AI viva core), 7 (administration).
--- Compatibility columns kept for existing screens: question.source_ref, exam_session.format, exam_attempt.score.
--- Applied once per Postgres volume by SchemaInitializer (see app_meta.seed_applied).
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE role (
@@ -16,6 +13,7 @@ CREATE TABLE "user" (
   google_sub varchar(255) UNIQUE,
   full_name varchar(255) NOT NULL,
   student_code varchar(50),
+  phone varchar(20),
   role_id smallint NOT NULL,
   is_active boolean NOT NULL DEFAULT true,
   last_login_at timestamptz,
@@ -53,6 +51,7 @@ CREATE TABLE language_config (
   stt_language varchar(20) NOT NULL,
   tts_language varchar(20) NOT NULL,
   tts_voice varchar(100),
+  tts_voice_en varchar(100),
   is_default boolean NOT NULL DEFAULT false
 );
 
@@ -86,6 +85,9 @@ CREATE TABLE course_document (
   storage_path text NOT NULL,
   extraction_status varchar(20) NOT NULL DEFAULT 'PENDING',
   extraction_error text,
+  content_hash varchar(64),
+  page_count int,
+  processed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -127,9 +129,9 @@ CREATE TABLE question (
   expected_answer text,
   source_ref text,
   key_points text,
-  bloom_level varchar(20) NOT NULL, -- REMEMBER | UNDERSTAND | APPLY | ANALYZE
-  status varchar(20) NOT NULL DEFAULT 'PENDING_REVIEW', -- PENDING_REVIEW | APPROVED | REJECTED
-  source varchar(20) NOT NULL, -- MANUAL | IMPORT | AI
+  bloom_level varchar(20) NOT NULL,
+  status varchar(20) NOT NULL DEFAULT 'PENDING_REVIEW',
+  source varchar(20) NOT NULL,
   author_id uuid NOT NULL,
   reviewed_by uuid,
   reviewed_at timestamptz,
@@ -183,7 +185,7 @@ CREATE TABLE question_turn (
   question_id uuid,
   parent_turn_id uuid,
   turn_no int NOT NULL,
-  turn_type varchar(20) NOT NULL DEFAULT 'MAIN', -- MAIN | FOLLOW_UP
+  turn_type varchar(20) NOT NULL DEFAULT 'MAIN',
   follow_up_no int,
   question_text text NOT NULL,
   asked_at timestamptz NOT NULL DEFAULT now(),
@@ -193,14 +195,22 @@ CREATE TABLE question_turn (
 CREATE TABLE answer (
   id uuid PRIMARY KEY,
   turn_id uuid NOT NULL UNIQUE,
-  status varchar(20) NOT NULL DEFAULT 'ANSWERED', -- ANSWERED | TIMEOUT | SKIPPED
+  status varchar(20) NOT NULL DEFAULT 'ANSWERED',
   transcript text,
   stt_confidence numeric(4,3),
   duration_ms int,
   needs_follow_up boolean NOT NULL DEFAULT false,
-  follow_up_reason varchar(20), -- VAGUE | MISSING_POINT | CONTRADICTION
+  follow_up_reason varchar(20),
   stt_latency_ms int,
   llm_latency_ms int,
+  score numeric(5,2),
+  is_sufficient boolean,
+  feedback text,
+  evaluator varchar(20),
+  teacher_score numeric(5,2),
+  teacher_feedback text,
+  graded_by uuid,
+  graded_at timestamptz,
   answered_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -243,6 +253,13 @@ CREATE INDEX idx_chunk_course ON knowledge_chunk (course_id);
 CREATE INDEX idx_chunk_document ON knowledge_chunk (document_id);
 CREATE INDEX idx_attempt_student ON exam_attempt (student_id);
 CREATE INDEX idx_session_teacher ON exam_session (teacher_id);
+CREATE UNIQUE INDEX uq_user_student_code ON "user" (student_code) WHERE student_code IS NOT NULL;
+CREATE INDEX idx_user_full_name ON "user" (lower(full_name));
+-- The same file can be uploaded once per teacher and subject, unless the earlier upload failed.
+CREATE UNIQUE INDEX uq_course_document_content
+    ON course_document (course_id, uploaded_by, content_hash)
+    WHERE content_hash IS NOT NULL AND extraction_status <> 'FAILED';
+CREATE INDEX idx_course_document_status ON course_document (extraction_status);
 
 ALTER TABLE question ADD CONSTRAINT ck_q_bloom CHECK (bloom_level IN ('REMEMBER','UNDERSTAND','APPLY','ANALYZE'));
 ALTER TABLE question ADD CONSTRAINT ck_q_status CHECK (status IN ('PENDING_REVIEW','APPROVED','REJECTED'));
@@ -251,8 +268,10 @@ ALTER TABLE exam_session ADD CONSTRAINT ck_es_format CHECK (format IN ('MULTIPLE
 ALTER TABLE question_turn ADD CONSTRAINT ck_qt_type CHECK (turn_type IN ('MAIN','FOLLOW_UP'));
 ALTER TABLE question_turn ADD CONSTRAINT ck_qt_parent CHECK (turn_type = 'MAIN' OR parent_turn_id IS NOT NULL);
 ALTER TABLE answer ADD CONSTRAINT ck_ans_status CHECK (status IN ('ANSWERED','TIMEOUT','SKIPPED'));
+ALTER TABLE answer ADD CONSTRAINT ck_answer_score CHECK (score IS NULL OR (score >= 0 AND score <= 100));
+ALTER TABLE answer ADD CONSTRAINT ck_answer_teacher_score CHECK (teacher_score IS NULL OR (teacher_score >= 0 AND teacher_score <= 100));
 
 INSERT INTO role (id, code, name) VALUES (1, 'ADMIN', 'Administrator'), (2, 'EXAMINER', 'Teacher'), (3, 'STUDENT', 'Student');
-INSERT INTO language_config (id, code, name, stt_language, tts_language, is_default) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'vi', 'Vietnamese', 'vi-VN', 'vi-VN', true),
-  ('00000000-0000-0000-0000-000000000002', 'en', 'English', 'en-US', 'en-US', false);
+INSERT INTO language_config (id, code, name, stt_language, tts_language, tts_voice, tts_voice_en, is_default) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'vi', 'Vietnamese', 'vi-VN', 'vi-VN', 'maichi', 'maichi', true),
+  ('00000000-0000-0000-0000-000000000002', 'en', 'English', 'en-US', 'en-US', 'maichi', 'maichi', false);

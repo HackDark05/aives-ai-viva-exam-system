@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
@@ -8,9 +8,10 @@ import { TeacherPageHeader } from "@/components/teacher/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
 import { useLocale } from "@/lib/i18n/locale-provider";
-import { rubricsForSubject, type TeachingRubric } from "@/lib/teacher/rubrics";
+import { rubricsForSubject, type TeachingRubric, type TeachingRubricDetail } from "@/lib/teacher/rubrics";
 import { cn } from "cn";
 
 type Subject = { id: string; code: string; name: string };
@@ -23,6 +24,8 @@ export function TeacherRubricsView() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [rubrics, setRubrics] = useState<TeachingRubric[]>([]);
   const [subjectId, setSubjectId] = useState(() => searchParams.get("subjectId") ?? "");
+  const [rubricName, setRubricName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     const param = searchParams.get("subjectId");
@@ -62,6 +65,37 @@ export function TeacherRubricsView() {
     };
   }, [t]);
 
+  async function onCreateRubric(event: FormEvent) {
+    event.preventDefault();
+    if (!subjectId) {
+      setError(t("teacher.rubrics.pickSubject"));
+      return;
+    }
+    const name = rubricName.trim();
+    if (!name) return;
+    setCreating(true);
+    setError(null);
+    try {
+      await api<TeachingRubricDetail>("/api/teaching/rubrics", {
+        method: "POST",
+        auth: true,
+        body: {
+          subjectId,
+          name,
+          description: "",
+          criteria: [{ id: "", name, description: "", maxPoints: 10, sortOrder: 0 }],
+        },
+      });
+      const nextRubrics = await api<TeachingRubric[]>("/api/teaching/rubrics", { auth: true });
+      setRubrics(nextRubrics);
+      setRubricName("");
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : t("teacher.rubrics.saveError"));
+    } finally {
+      setCreating(false);
+    }
+  }
+
   const filtered = useMemo(() => {
     if (!subjectId) return rubrics;
     return rubricsForSubject(rubrics, subjectId);
@@ -92,6 +126,30 @@ export function TeacherRubricsView() {
           {error}
         </p>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("teacher.rubrics.createTitle")}</CardTitle>
+          <CardDescription>{t("teacher.rubrics.createDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onCreateRubric}>
+            <Field className="min-w-0 flex-1">
+              <FieldLabel htmlFor="new-rubric-name">{t("teacher.rubrics.createName")}</FieldLabel>
+              <Input
+                id="new-rubric-name"
+                value={rubricName}
+                onChange={(event) => setRubricName(event.target.value)}
+                placeholder={t("teacher.rubrics.createNamePlaceholder")}
+                required
+              />
+            </Field>
+            <Button type="submit" disabled={!subjectId || creating}>
+              {creating ? t("teacher.rubrics.saving") : t("teacher.rubrics.createAction")}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

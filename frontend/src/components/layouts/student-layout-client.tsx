@@ -17,24 +17,9 @@ export function StudentLayoutClient({ children }: { children: ReactNode }) {
     [t],
   );
 
-  // 2. Tùy chọn menu cho User Dropdown góc trên bên phải
-  const userMenuItems = useMemo(
-    () => [
-      {
-        href: "/student/profile",
-        label: t("student_profile.edit") || t("nav.student.profile"),
-      },
-    ],
-    [t],
-  );
-
+  // Link "My Profile" ở dropdown góc phải do PortalShell tự render.
   return (
-    <PortalShell 
-      role="STUDENT" 
-      eyebrow={t("roles.student")} 
-      nav={nav}
-      userMenuItems={userMenuItems} // Truyền menu vào dropdown góc phải
-    >
+    <PortalShell role="STUDENT" eyebrow={t("roles.student")} nav={nav}>
       {children}
     </PortalShell>
   );

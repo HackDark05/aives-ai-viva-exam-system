@@ -2,10 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowRightIcon, Loader2Icon, SparklesIcon } from "lucide-react";
+import { ArrowRightIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { MaterialDropzone } from "@/components/teacher/material-dropzone";
 import { RubricFieldLabel } from "@/components/teacher/rubric-field-label";
 import { TeacherPageHeader } from "@/components/teacher/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -44,7 +42,6 @@ type Question = {
 const BLOOM = ["REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE"] as const;
 
 export function TeacherBank() {
-  const router = useRouter();
   const { t, locale } = useLocale();
   const [loading, setLoading] = useState(true);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -56,11 +53,6 @@ export function TeacherBank() {
   const [bloom, setBloom] = useState<(typeof BLOOM)[number]>("UNDERSTAND");
   const [prompt, setPrompt] = useState("");
   const [importText, setImportText] = useState("");
-  const [subjectCode, setSubjectCode] = useState("");
-  const [subjectName, setSubjectName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [materialCount, setMaterialCount] = useState<number | null>(null);
 
   const subjectRubrics = useMemo(
     () => rubricsForSubject(rubrics, subjectId),
@@ -70,28 +62,6 @@ export function TeacherBank() {
   useEffect(() => {
     setRubricId((current) => resolveRubricIdForSubject(rubrics, subjectId, current));
   }, [rubrics, subjectId]);
-
-  useEffect(() => {
-    if (!subjectId) {
-      setMaterialCount(null);
-      return;
-    }
-    let cancelled = false;
-    api<{ id: string }[]>(`/api/teaching/documents?subjectId=${subjectId}`, { auth: true })
-      .then((docs) => {
-        if (!cancelled) setMaterialCount(docs.length);
-      })
-      .catch(() => {
-        if (!cancelled) setMaterialCount(0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [subjectId]);
-
-  const draftFromAiHref = subjectId
-    ? `/teacher/tests?subjectId=${encodeURIComponent(subjectId)}#draft-from-ai`
-    : "/teacher/tests#draft-from-ai";
 
   async function reloadBank() {
     const [nextSubjects, nextRubrics, nextQuestions] = await Promise.all([
@@ -176,43 +146,6 @@ export function TeacherBank() {
     }
   }
 
-  async function onMaterial(event: FormEvent) {
-    event.preventDefault();
-    if (!file || !subjectId) return;
-    const body = new FormData();
-    body.set("subjectId", subjectId);
-    body.set("file", file);
-    setUploading(true);
-    try {
-      await api("/api/teaching/documents", { method: "POST", auth: true, body });
-      setFile(null);
-      toast.success(t("teacher.bank.materialAddedToList"));
-      router.push(draftFromAiHref);
-    } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : t("teacher.bank.loadError"));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function onCreateSubject(event: FormEvent) {
-    event.preventDefault();
-    try {
-      const created = await api<Subject>("/api/teaching/subjects", {
-        method: "POST",
-        auth: true,
-        body: { code: subjectCode, name: subjectName },
-      });
-      setSubjectCode("");
-      setSubjectName("");
-      toast.success(t("teacher.bank.subjectCreated"));
-      await reloadBank();
-      setSubjectId(created.id);
-    } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : t("teacher.bank.loadError"));
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -264,92 +197,6 @@ export function TeacherBank() {
               <ArrowRightIcon className="size-4" aria-hidden />
             </Link>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="font-serif text-2xl">{t("teacher.bank.subjectTitle")}</CardTitle>
-          <CardDescription>{t("teacher.bank.subjectDesc")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6 pt-6">
-          <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onCreateSubject}>
-            <Field className="flex-1">
-              <FieldLabel htmlFor="subject-code">{t("teacher.bank.codePlaceholder")}</FieldLabel>
-              <Input
-                id="subject-code"
-                value={subjectCode}
-                onChange={(event) => setSubjectCode(event.target.value)}
-                required
-              />
-            </Field>
-            <Field className="flex-1">
-              <FieldLabel htmlFor="subject-name">{t("teacher.bank.namePlaceholder")}</FieldLabel>
-              <Input
-                id="subject-name"
-                value={subjectName}
-                onChange={(event) => setSubjectName(event.target.value)}
-                required
-              />
-            </Field>
-            <Button type="submit">{t("teacher.bank.createSubject")}</Button>
-          </form>
-
-          <form className="space-y-3" onSubmit={onMaterial}>
-            <Field>
-              <FieldLabel htmlFor="material-subject">{t("teacher.common.subject")}</FieldLabel>
-              <select
-                id="material-subject"
-                className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-                value={subjectId}
-                onChange={(event) => setSubjectId(event.target.value)}
-                required
-              >
-                {subjects.length === 0 ? (
-                  <option value="">{t("teacher.bank.createSubjectFirst")}</option>
-                ) : null}
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.code} — {subject.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <MaterialDropzone
-              id="material-file"
-              file={file}
-              onFileChange={setFile}
-              disabled={!subjectId || uploading}
-              label={t("teacher.bank.dropzoneLabel")}
-              dropTitle={t("teacher.bank.dropzoneTitle")}
-              dropHint={t("teacher.bank.dropzoneHint")}
-              dropActive={t("teacher.bank.dropzoneActive")}
-              invalidTypeMessage={t("teacher.bank.dropzoneInvalidType")}
-              selectedLabel={(name) => t("teacher.bank.dropzoneSelected", { name })}
-            />
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={!subjectId || !file || uploading}>
-                {uploading ? t("teacher.common.loading") : t("teacher.bank.importMaterial")}
-              </Button>
-              {subjectId && materialCount !== null && materialCount > 0 ? (
-                <Link
-                  href={draftFromAiHref}
-                  className={cn(buttonVariants({ variant: "secondary" }), "inline-flex items-center gap-2")}
-                >
-                  <SparklesIcon className="size-4" aria-hidden />
-                  {t("teacher.bank.draftQuestionsFromMaterial")}
-                </Link>
-              ) : (
-                <Button type="button" variant="secondary" disabled className="inline-flex items-center gap-2">
-                  <SparklesIcon className="size-4" aria-hidden />
-                  {t("teacher.bank.draftQuestionsFromMaterial")}
-                </Button>
-              )}
-            </div>
-            {subjectId && materialCount === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("teacher.bank.draftAiNeedsMaterial")}</p>
-            ) : null}
-          </form>
         </CardContent>
       </Card>
 

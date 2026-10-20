@@ -153,6 +153,13 @@ export function TeacherOverviewView() {
               <ArrowRightIcon className="size-4" />
             </Link>
             <Link
+              href="/teacher/subjects"
+              className={cn(buttonVariants({ variant: "outline" }), "justify-between")}
+            >
+              {t("nav.teacher.createSubject")}
+              <ArrowRightIcon className="size-4" />
+            </Link>
+            <Link
               href="/teacher/bank"
               className={cn(buttonVariants({ variant: "outline" }), "justify-between")}
             >
